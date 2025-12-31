@@ -9,6 +9,8 @@ from TTS.api import TTS
 from faster_whisper import WhisperModel
 
 SAMPLE_RATE = 16000
+# Increase to play synthesized speech faster (e.g., 1.0 is normal speed).
+PLAYBACK_SPEED = 1.25
 
 
 def record_until_enter():
@@ -28,7 +30,7 @@ def record_until_enter():
     return np.concatenate(chunks, axis=0).flatten()
 
 
-def play_audio(wav, sample_rate: int) -> None:
+def play_audio(wav, sample_rate: int, speed: float = 1.0) -> None:
     """Play a waveform in-memory using ffplay so we don't write to disk."""
     if shutil.which("ffplay") is None:
         msg = "ffplay is required to play audio without saving a file."
@@ -46,6 +48,8 @@ def play_audio(wav, sample_rate: int) -> None:
         "-ar",
         str(sample_rate),
         "-",
+        "-af",
+        f"atempo={speed}",
     ]
     with subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -83,14 +87,20 @@ def main():
         print(f"Heard: {input_text}")
         response = chat(
             model="llava:7b",
-            messages=[{"role": "user", "content": input_text}],
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Be concise and reply in no more than two short sentences.",
+                },
+                {"role": "user", "content": input_text},
+            ],
             stream=False,
         )
         output_text = response["message"]["content"]
         print(f"LLM Response: {output_text}")
 
         wav = tts.tts(text=output_text)
-        play_audio(wav, tts.synthesizer.output_sample_rate)
+        play_audio(wav, tts.synthesizer.output_sample_rate, speed=PLAYBACK_SPEED)
 
 
 if __name__ == "__main__":
