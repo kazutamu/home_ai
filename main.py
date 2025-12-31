@@ -57,24 +57,40 @@ def play_audio(wav, sample_rate: int) -> None:
 
 
 def main():
-    audio = record_until_enter()
-    model = WhisperModel("base", device="cpu", compute_type="int8")
-    segments, info = model.transcribe(
-        audio, language="en", beam_size=5, vad_filter=True
-    )
-    input_text = " ".join(seg.text for seg in segments)
-    print(f"Heard: {input_text}")
-    response = chat(
-        model="llava:7b",
-        messages=[{"role": "user", "content": input_text}],
-        stream=False,
-    )
-    output_text = response["message"]["content"]
-    print(f"LLM Response: {output_text}")
+    print("Press Enter to record, or type 'q' then Enter to quit.")
+    whisper = WhisperModel("base", device="cpu", compute_type="int8")
     tts = TTS("tts_models/en/ljspeech/tacotron2-DDC")
-    wav = tts.tts(text=output_text)
 
-    play_audio(wav, tts.synthesizer.output_sample_rate)
+    while True:
+        cmd = input("Ready? (Enter=record, q=quit): ").strip().lower()
+        if cmd.startswith("q"):
+            print("Exiting.")
+            break
+
+        audio = record_until_enter()
+        if audio.size == 0:
+            print("No audio captured, try again.")
+            continue
+
+        segments, _ = whisper.transcribe(
+            audio, language="en", beam_size=5, vad_filter=True
+        )
+        input_text = " ".join(seg.text for seg in segments).strip()
+        if not input_text:
+            print("Could not understand audio, try again.")
+            continue
+
+        print(f"Heard: {input_text}")
+        response = chat(
+            model="llava:7b",
+            messages=[{"role": "user", "content": input_text}],
+            stream=False,
+        )
+        output_text = response["message"]["content"]
+        print(f"LLM Response: {output_text}")
+
+        wav = tts.tts(text=output_text)
+        play_audio(wav, tts.synthesizer.output_sample_rate)
 
 
 if __name__ == "__main__":
