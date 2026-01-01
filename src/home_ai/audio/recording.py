@@ -19,7 +19,9 @@ def record_until_enter(samplerate: int = SAMPLE_RATE, channels: int = 1) -> np.n
 
     print("Recording... press Enter to stop.")
     try:
-        with sd.InputStream(samplerate=samplerate, channels=channels, callback=callback):
+        with sd.InputStream(
+            samplerate=samplerate, channels=channels, callback=callback
+        ):
             input()
     except PortAudioError as exc:
         msg = (
@@ -33,3 +35,26 @@ def record_until_enter(samplerate: int = SAMPLE_RATE, channels: int = 1) -> np.n
     if not chunks:
         return np.array([], dtype=np.float32)
     return np.concatenate(chunks, axis=0).flatten()
+
+
+def record_for_10_seconds(
+    samplerate: int = SAMPLE_RATE, channels: int = 1
+) -> np.ndarray:
+    """Record audio for 10 seconds and return a flattened float32 waveform."""
+    duration = 10  # seconds
+    print(f"Recording for {duration} seconds...")
+    try:
+        recording = sd.rec(
+            int(duration * samplerate),
+            samplerate=samplerate,
+            channels=channels,
+            dtype="float32",
+        )
+        sd.wait()  # Wait until recording is finished
+    except PortAudioError as exc:
+        msg = (
+            f"Could not open input device: {exc}. "
+            "Check that your microphone is available to the container or select a valid device."
+        )
+        raise RuntimeError(msg) from exc
+    return recording.flatten()

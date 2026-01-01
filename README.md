@@ -25,3 +25,9 @@ uv run python -m home_ai.main
 ```
 
 While running, press Enter to start/stop recording; type `q` + Enter to quit.
+
+## Temporal (uv)
+- Ensure a Temporal server is running and reachable at `temporal://localhost:7233`
+  (for local dev you can use `temporal server start-dev` or the Temporal Docker image).
+- Start the worker on the default task queue: `uv run home-ai-temporal worker`
+- Kick off the sample greeting workflow once: `uv run home-ai-temporal run "Your Name"`

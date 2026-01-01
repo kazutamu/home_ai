@@ -16,4 +16,9 @@ dependencies = [
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
+    "webrtcvad>=2.0.10",
+    "temporalio>=1.0.0",
 ]
+
+[project.scripts]
+home-ai-temporal = "home_ai.main4:cli"
