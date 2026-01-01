@@ -14,37 +14,6 @@ SAMPLE_RATE = 16000
 PLAYBACK_SPEED = 1.25
 
 
-def _pick_input_device() -> int:
-    """Return an input-capable device index or raise with a clear message."""
-    try:
-        devices = sd.query_devices()
-    except Exception as exc:  # pragma: no cover - passthrough diagnostics
-        msg = f"Could not query audio devices: {exc}"
-        raise RuntimeError(msg) from exc
-
-    input_devices = [
-        i for i, dev in enumerate(devices) if dev.get("max_input_channels", 0) > 0
-    ]
-    if not input_devices:
-        msg = (
-            "No input audio devices found. If you are in a dev container, pass the host mic "
-            "through (e.g., add --device /dev/snd) or run on the host."
-        )
-        raise RuntimeError(msg)
-
-    default_device = sd.default.device
-    if isinstance(default_device, (list, tuple)):
-        default_in = default_device[0]
-    else:
-        # sounddevice may return an _InputOutputPair with an .input attribute
-        default_in = getattr(default_device, "input", default_device)
-
-    if isinstance(default_in, (int, float)) and default_in >= 0:
-        return int(default_in)
-
-    return input_devices[0]
-
-
 def record_until_enter():
     q = queue.Queue()
 
@@ -53,16 +22,13 @@ def record_until_enter():
             print(status)
         q.put(indata.copy())
 
-    device = _pick_input_device()
-    print(f"Recording (device {device})... press Enter to stop.")
+    print("Recording... press Enter to stop.")
     try:
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, callback=callback, device=device
-        ):
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback):
             input()
     except PortAudioError as exc:
         msg = (
-            f"Could not open input device {device}: {exc}. "
+            f"Could not open input device: {exc}. "
             "Check that your microphone is available to the container or select a valid device."
         )
         raise RuntimeError(msg) from exc
