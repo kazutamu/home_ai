@@ -1,4 +1,4 @@
-from home_ai import main
+from home_ai.main import main
 
 
 if __name__ == "__main__":
