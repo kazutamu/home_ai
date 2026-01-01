@@ -1,0 +1,19 @@
+[build-system]
+# Use the uv build backend directly
+requires = ["uv-build"]
+build-backend = "uv_build"
+
+[project]
+name = "home_ai"
+version = "0.1.0"
+description = "Voice agent: record audio, transcribe with faster-whisper, chat via Ollama, and speak the reply."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "ollama>=0.2.0",
+    "TTS>=0.22.0",
+    "faster-whisper>=0.10.0",
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "numpy>=1.26.0",
+]

@@ -1,0 +1,28 @@
+{
+  "name": "home_ai-uv",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "uv sync",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "openai.chatgpt",
+        "ms-python.black-formatter",
+        "GitHub.vscode-pull-request-github",
+        "ms-python.isort",
+        "esbenp.prettier-vscode",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-python.vscode-python-envs"
+      ]
+    }
+  }
+}
