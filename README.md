@@ -21,7 +21,7 @@ uv sync
 
 ## Run
 ```bash
-uv run python main.py
+uv run python -m home_ai.main
 ```
 
 While running, press Enter to start/stop recording; type `q` + Enter to quit.

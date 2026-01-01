@@ -22,7 +22,9 @@ def _pick_input_device() -> int:
         msg = f"Could not query audio devices: {exc}"
         raise RuntimeError(msg) from exc
 
-    input_devices = [i for i, dev in enumerate(devices) if dev.get("max_input_channels", 0) > 0]
+    input_devices = [
+        i for i, dev in enumerate(devices) if dev.get("max_input_channels", 0) > 0
+    ]
     if not input_devices:
         msg = (
             "No input audio devices found. If you are in a dev container, pass the host mic "
@@ -54,7 +56,9 @@ def record_until_enter():
     device = _pick_input_device()
     print(f"Recording (device {device})... press Enter to stop.")
     try:
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback, device=device):
+        with sd.InputStream(
+            samplerate=SAMPLE_RATE, channels=1, callback=callback, device=device
+        ):
             input()
     except PortAudioError as exc:
         msg = (
@@ -114,7 +118,9 @@ def main():
             print("No audio captured, try again.")
             continue
 
-        segments, _ = whisper.transcribe(audio, language="en", beam_size=5, vad_filter=True)
+        segments, _ = whisper.transcribe(
+            audio, language="en", beam_size=5, vad_filter=True
+        )
         input_text = " ".join(seg.text for seg in segments).strip()
         if not input_text:
             print("Could not understand audio, try again.")
@@ -139,4 +145,5 @@ def main():
         play_audio(wav, tts.synthesizer.output_sample_rate, speed=PLAYBACK_SPEED)
 
 
-__all__ = ["main", "play_audio", "record_until_enter", "SAMPLE_RATE", "PLAYBACK_SPEED"]
+if __name__ == "__main__":
+    main()
