@@ -1,6 +1,5 @@
-from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Optional
+from typing import Optional
 
 from temporalio import workflow
 
@@ -9,13 +8,22 @@ from temporalio import workflow
 class ChatAgentWorkflow:
     def __init__(self) -> None:
         self.latest_text: Optional[str] = None
-        self.input_version: int = 0
-        self.last_done_version: int = 0
+        self.processing_idx: int = 0
+        self.last_processed_idx: int = 0
+
+    def _arrived_new_input(self) -> bool:
+        return self.processing_idx > self.last_processed_idx
+
+    def _update_text(self, text: str) -> None:
+        self.latest_text = text
+        self.processing_idx += 1
+
+    def _done_workflow(self) -> None:
+        self.last_processed_idx = self.processing_idx
 
     @workflow.signal
     async def new_text_input(self, text: str) -> None:
-        self.latest_text = text
-        self.input_version += 1
+        self._update_text(text)
 
     async def _execute_workflow(self, reply_with_voice: bool) -> str:
         reply = await workflow.execute_activity(
@@ -30,15 +38,13 @@ class ChatAgentWorkflow:
                 start_to_close_timeout=timedelta(seconds=60),
             )
 
+        self._done_workflow()
         return reply
 
     @workflow.run
     async def run(self, reply_with_voice: bool) -> None:
         while True:
-            await workflow.wait_condition(
-                lambda: self.latest_text is not None
-                and self.input_version > self.last_done_version
-            )
+            await workflow.wait_condition(self._arrived_new_input)
+            print("Input: ", self.latest_text)
             result = await self._execute_workflow(reply_with_voice)
-            print("Workflow result:", result)
-            self.last_done_version = self.input_version
+            print("Home AI: ", result)
