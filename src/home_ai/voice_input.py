@@ -9,7 +9,7 @@ from temporalio.client import Client
 
 from .agent_workflow import ChatAgentWorkflow
 from .models import Transcriber
-from .worker import TASK_QUEUE, WF_ID
+from .worker import TASK_QUEUE, WF_ID, LOCAL_HOST
 
 SAMPLE_RATE = 16000
 FRAME_MS = 30
@@ -22,16 +22,13 @@ vad = webrtcvad.Vad(VAD_MODE)
 
 
 def frame_is_speech(frame_f32: np.ndarray) -> bool:
-    """
-    sounddeviceはfloat32(-1..1)で来るので int16 PCM に変換してVADへ
-    """
     pcm16 = (np.clip(frame_f32, -1.0, 1.0) * 32767).astype(np.int16)
     return vad.is_speech(pcm16.tobytes(), SAMPLE_RATE)
 
 
 async def main():
     transcriber = Transcriber()
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(LOCAL_HOST)
 
     try:
         await client.start_workflow(
@@ -43,6 +40,9 @@ async def main():
         print("Workflow started:", WF_ID)
     except Exception:
         print("Workflow already running:", WF_ID)
+    except Exception as exc:
+        print(f"Failed to start workflow: {exc}")
+        return
 
     handle = client.get_workflow_handle(WF_ID)
 
