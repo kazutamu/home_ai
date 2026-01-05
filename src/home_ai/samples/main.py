@@ -1,7 +1,7 @@
-from .audio import play_audio, record_until_enter
-from .chatbot import reply
-from .config import PLAYBACK_SPEED, SAMPLE_RATE
-from .models import TextToSpeech, Transcriber
+from ..audio import play_audio, record_until_enter
+from ..chatbot import reply
+from ..config import PLAYBACK_SPEED, SAMPLE_RATE
+from ..models import TextToSpeech, Transcriber
 
 
 def main():
