@@ -1,6 +1,6 @@
 from temporalio import activity
 
-from .audio import play_audio as play_audio_out
+from .audio import play_audio
 from .chatbot import reply
 from .models import TextToSpeech
 
@@ -17,4 +17,4 @@ async def speak_text(text: str) -> None:
     """Synth + play inside the activity to avoid returning large payloads."""
     tts = TextToSpeech()
     audio, sample_rate = tts.synthesize(text)
-    play_audio_out(audio, sample_rate, speed=PLAYBACK_SPEED)
+    play_audio(audio, sample_rate, speed=PLAYBACK_SPEED)
