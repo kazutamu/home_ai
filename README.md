@@ -2,7 +2,7 @@
 
 Minimal uv project for a voice agent that:
 
-- records mic audio until you press Enter,
+- records mic audio when someone is talking,
 - transcribes it with faster-whisper,
 - gets a concise response from Ollama, and
 - speaks the reply via Coqui TTS (played directly with ffplay).
@@ -24,15 +24,15 @@ uv sync
 
 ## Run
 
-```bash
-uv run python -m home_ai.main
-```
-
-While running, press Enter to start/stop recording; type `q` + Enter to quit.
-
-## Temporal (uv)
-
 - Ensure a Temporal server is running and reachable at `temporal://localhost:7233`
   (for local dev you can use `temporal server start-dev` or the Temporal Docker image).
 - Start the worker on the default task queue: `uv run python -m home_ai.worker`
-- Kick off the sample greeting workflow once: `uv run home-ai-temporal run "Your Name"`
+- Kick off the sample greeting workflow once: `uv run python -m home_ai.voice_input`
+
+## To do
+
+- Clean up the voice_input.py
+- Establish the RAG system such that the chat workflow can continue on conversation.
+- Let the AI system control Home appliance
+- Tune the prompt to sounds like it is speaking
+-
