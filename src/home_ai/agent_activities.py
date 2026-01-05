@@ -1,8 +1,3 @@
-"""
-Activities run outside the Temporal workflow sandbox, so network calls (e.g. Ollama)
-and other side effects belong here.
-"""
-
 from temporalio import activity
 
 from .audio import play_audio as play_audio_out

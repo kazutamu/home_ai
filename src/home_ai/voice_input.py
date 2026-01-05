@@ -8,7 +8,7 @@ import sounddevice as sd
 import webrtcvad
 from temporalio.client import Client
 
-from .agent_workflow import ChatAgentWorkflow, REPLY_STYLE_AUDIO
+from .agent_workflow import ChatAgentWorkflow
 from .models import Transcriber
 
 SAMPLE_RATE = 16000
@@ -40,7 +40,7 @@ async def main():
             ChatAgentWorkflow.run,
             id=WF_ID,
             task_queue=TASK_QUEUE,
-            args=[REPLY_STYLE_AUDIO],
+            args=[False],
         )
         print("Workflow started:", WF_ID)
     except Exception:

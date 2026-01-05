@@ -2,10 +2,7 @@ import asyncio
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from .agent_workflow import (
-    ChatAgentWorkflow,
-    REPLY_STYLE_TEXT,
-)
+from .agent_workflow import ChatAgentWorkflow
 
 WF_ID = "chat-session-1"
 TASK_QUEUE = "agent-q"
@@ -19,7 +16,7 @@ async def main():
             ChatAgentWorkflow.run,
             id=WF_ID,
             task_queue=TASK_QUEUE,
-            args=[REPLY_STYLE_TEXT],
+            args=[False],
         )
         print("Workflow started:", WF_ID)
     except WorkflowAlreadyStartedError:
