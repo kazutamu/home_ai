@@ -1,6 +1,8 @@
+from numpy import ndarray
 from temporalio import workflow
 from dataclasses import dataclass
 from typing import Optional
+from datetime import timedelta
 
 
 @dataclass
@@ -22,6 +24,16 @@ class ChatAgentWorkflow:
         self.latest_text = text
         self.input_version += 1
 
+    async def _execute_workflow(self) -> str:
+        if self.latest_text is None:
+            return "No input text available"
+        reply = await workflow.execute_activity(
+            "llm_respond",
+            self.latest_text,
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+        return reply
+
     @workflow.run
     async def run(self) -> None:
         while True:
@@ -29,5 +41,6 @@ class ChatAgentWorkflow:
                 lambda: self.latest_text is not None
                 and self.input_version > self.last_done_version
             )
-            print("New input received:", self.latest_text)
+            result = await self._execute_workflow()
+            print("Workflow result:", result)
             self.last_done_version = self.input_version

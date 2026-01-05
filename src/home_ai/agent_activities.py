@@ -5,13 +5,12 @@ and other side effects belong here.
 
 import asyncio
 from temporalio import activity
+from .chatbot import reply
 
 
 @activity.defn(name="llm_respond")
 async def llm_respond(text: str) -> str:
-    # TODO: replace this stub with a real Ollama call.
-    await asyncio.sleep(4)
-    return f"回答: {text}（の続き…）"
+    return reply(text)
 
 
 @activity.defn(name="text_to_speech")

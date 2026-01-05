@@ -27,7 +27,6 @@ async def main():
             print("Exiting.")
             break
         await handle.signal(ChatAgentWorkflow.new_text_input, text)
-        await asyncio.sleep(3)
 
 
 if __name__ == "__main__":
