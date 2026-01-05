@@ -5,7 +5,7 @@ import numpy as np
 import sounddevice as sd
 from sounddevice import PortAudioError
 
-from ..config import SAMPLE_RATE
+SAMPLE_RATE = 16000
 
 
 def record_until_enter(samplerate: int = SAMPLE_RATE, channels: int = 1) -> np.ndarray:

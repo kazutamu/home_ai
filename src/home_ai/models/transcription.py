@@ -2,7 +2,9 @@ from typing import Iterable
 
 from faster_whisper import WhisperModel
 
-from ..config import WHISPER_COMPUTE_TYPE, WHISPER_DEVICE, WHISPER_MODEL_NAME
+WHISPER_MODEL_NAME = "base"
+WHISPER_DEVICE = "cpu"
+WHISPER_COMPUTE_TYPE = "int8"
 
 
 class Transcriber:

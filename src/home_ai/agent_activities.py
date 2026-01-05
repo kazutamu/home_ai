@@ -8,7 +8,8 @@ from temporalio import activity
 from .audio import play_audio as play_audio_out
 from .chatbot import reply
 from .models import TextToSpeech
-from .config import PLAYBACK_SPEED
+
+PLAYBACK_SPEED = 1.25
 
 
 @activity.defn(name="llm_respond")

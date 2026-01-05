@@ -1,6 +1,7 @@
 from ollama import chat
 
-from ..config import CHAT_MODEL, SYSTEM_PROMPT
+CHAT_MODEL = "llava:7b"
+SYSTEM_PROMPT = "Be concise and reply in no more than two short sentences."
 
 
 def reply(user_text: str) -> str:

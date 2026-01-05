@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 from TTS.api import TTS
 
-from ..config import TTS_MODEL_NAME
+TTS_MODEL_NAME = "tts_models/en/ljspeech/tacotron2-DDC"
 
 
 class TextToSpeech:
