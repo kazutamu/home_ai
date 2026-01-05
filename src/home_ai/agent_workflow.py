@@ -3,10 +3,7 @@ from datetime import timedelta
 from enum import Enum
 from typing import Optional
 
-from numpy import ndarray
 from temporalio import workflow
-
-from .config import SAMPLE_RATE
 
 
 @dataclass
@@ -42,16 +39,11 @@ class ChatAgentWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
         if style == ReplyStyle.audio:
-            test = await workflow.execute_activity(
-                "text_to_speech",
+            await workflow.execute_activity(
+                "speak_text",
                 reply,
                 start_to_close_timeout=timedelta(seconds=60),
             )
-            # await workflow.execute_activity(
-            #     "play_audio",
-            #     args=[audio_data, output_sample_rate],
-            #     start_to_close_timeout=timedelta(seconds=60),
-            # )
 
         return reply
 
