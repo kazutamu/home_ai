@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from temporalio import workflow
+
+ReplyStyle = Literal["text", "audio"]
+REPLY_STYLE_TEXT: ReplyStyle = "text"
+REPLY_STYLE_AUDIO: ReplyStyle = "audio"
 
 
 @dataclass
@@ -11,11 +14,6 @@ class Status:
     latest_text: Optional[str]
     input_version: int = 0
     last_done_version: int = 0
-
-
-class ReplyStyle(Enum):
-    text = "text"
-    audio = "audio"
 
 
 @workflow.defn
@@ -30,7 +28,7 @@ class ChatAgentWorkflow:
         self.latest_text = text
         self.input_version += 1
 
-    async def _execute_workflow(self, style: ReplyStyle = ReplyStyle.audio) -> str:
+    async def _execute_workflow(self, style: ReplyStyle = REPLY_STYLE_AUDIO) -> str:
         if self.latest_text is None:
             return "No input text available"
         reply = await workflow.execute_activity(
@@ -38,7 +36,7 @@ class ChatAgentWorkflow:
             self.latest_text,
             start_to_close_timeout=timedelta(seconds=30),
         )
-        if style == ReplyStyle.audio:
+        if style == REPLY_STYLE_AUDIO:
             await workflow.execute_activity(
                 "speak_text",
                 reply,
@@ -48,10 +46,7 @@ class ChatAgentWorkflow:
         return reply
 
     @workflow.run
-    async def run(self, reply_style: ReplyStyle | str = ReplyStyle.audio) -> None:
-        # Normalize to enum in case caller passed a string (e.g., from JSON args).
-        if isinstance(reply_style, str):
-            reply_style = ReplyStyle(reply_style)
+    async def run(self, reply_style: ReplyStyle = REPLY_STYLE_AUDIO) -> None:
         while True:
             await workflow.wait_condition(
                 lambda: self.latest_text is not None
