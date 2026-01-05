@@ -4,12 +4,11 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .agent_workflow import ChatAgentWorkflow
 
-WF_ID = "chat-session-1"
-TASK_QUEUE = "agent-q"
+from .worker import WF_ID, TASK_QUEUE, LOCAL_HOST
 
 
 async def main():
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(LOCAL_HOST)
 
     try:
         await client.start_workflow(

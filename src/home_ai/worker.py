@@ -6,10 +6,13 @@ from .agent_activities import llm_respond, speak_text
 from .agent_workflow import ChatAgentWorkflow
 
 TASK_QUEUE = "agent-q"
+WF_ID = "chat-session-1"
+TASK_QUEUE = "agent-q"
+LOCAL_HOST = "localhost:7233"
 
 
 async def main():
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect(LOCAL_HOST)
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,

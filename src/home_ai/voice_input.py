@@ -10,6 +10,7 @@ from temporalio.client import Client
 
 from .agent_workflow import ChatAgentWorkflow
 from .models import Transcriber
+from .worker import TASK_QUEUE, WF_ID
 
 SAMPLE_RATE = 16000
 FRAME_MS = 30
@@ -17,8 +18,6 @@ FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_MS / 1000)
 VAD_MODE = 2
 START_TRIGGER_FRAMES = 8
 END_TRIGGER_FRAMES = 12
-WF_ID = "chat-session-1"
-TASK_QUEUE = "agent-q"
 
 vad = webrtcvad.Vad(VAD_MODE)
 

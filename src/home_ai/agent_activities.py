@@ -13,9 +13,8 @@ async def llm_respond(text: str) -> str:
 
 
 @activity.defn(name="speak_text")
-async def speak_text(text: str) -> str:
+async def speak_text(text: str) -> None:
     """Synth + play inside the activity to avoid returning large payloads."""
     tts = TextToSpeech()
     audio, sample_rate = tts.synthesize(text)
     play_audio_out(audio, sample_rate, speed=PLAYBACK_SPEED)
-    return "played"
