@@ -48,12 +48,15 @@ class ChatAgentWorkflow:
         return reply
 
     @workflow.run
-    async def run(self) -> None:
+    async def run(self, reply_style: ReplyStyle | str = ReplyStyle.audio) -> None:
+        # Normalize to enum in case caller passed a string (e.g., from JSON args).
+        if isinstance(reply_style, str):
+            reply_style = ReplyStyle(reply_style)
         while True:
             await workflow.wait_condition(
                 lambda: self.latest_text is not None
                 and self.input_version > self.last_done_version
             )
-            result = await self._execute_workflow(ReplyStyle.audio)
+            result = await self._execute_workflow(reply_style)
             print("Workflow result:", result)
             self.last_done_version = self.input_version
