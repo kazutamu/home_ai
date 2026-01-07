@@ -32,7 +32,9 @@ uv sync
 ## To do
 
 - Clean up the voice_input.py
-- Establish the RAG system such that the chat workflow can continue on conversation.
+- Establish the RAG system such that the chat workflow can continue on conversation
 - Let the AI system control Home appliance
 - Tune the prompt to sounds like it is speaking
--
+- Make a chain of thought to have natural response behavior
+  - Validate the text to see if it is worth answering
+  - Host several agents based on the use-case
