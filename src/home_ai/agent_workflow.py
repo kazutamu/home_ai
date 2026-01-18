@@ -18,28 +18,62 @@ class ChatAgentWorkflow:
         self.latest_text = text
         self.processing_idx += 1
 
-    def _done_workflow(self) -> None:
-        self.last_processed_idx = self.processing_idx
+    def _done_workflow(self, processed_idx: int) -> None:
+        self.last_processed_idx = processed_idx
 
     @workflow.signal
     async def new_text_input(self, text: str) -> None:
         self._update_text(text)
 
     async def _execute_workflow(self, reply_with_voice: bool) -> str:
-        reply = await workflow.execute_activity(
-            "llm_respond",
-            self.latest_text,
-            start_to_close_timeout=timedelta(seconds=30),
-        )
-        if reply_with_voice:
-            await workflow.execute_activity(
-                "speak_text",
-                reply,
-                start_to_close_timeout=timedelta(seconds=60),
+        while True:
+            start_idx = self.processing_idx
+            text = self.latest_text
+
+            reply_handle = workflow.start_activity(
+                "llm_respond",
+                text,
+                start_to_close_timeout=timedelta(seconds=30),
+                cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
 
-        self._done_workflow()
-        return reply
+            await workflow.wait_condition(
+                lambda: reply_handle.done() or self.processing_idx > start_idx
+            )
+
+            if self.processing_idx > start_idx:
+                reply_handle.cancel()
+                try:
+                    await reply_handle
+                except Exception:
+                    pass
+                continue
+
+            reply = await reply_handle
+            if reply_with_voice:
+                speak_handle = workflow.start_activity(
+                    "speak_text",
+                    reply,
+                    start_to_close_timeout=timedelta(seconds=60),
+                    cancellation_type=workflow.ActivityCancellationType.ABANDON,
+                )
+                await workflow.wait_condition(
+                    lambda: speak_handle.done() or self.processing_idx > start_idx
+                )
+                if self.processing_idx > start_idx:
+                    speak_handle.cancel()
+                    try:
+                        await workflow.execute_local_activity(
+                            "stop_audio",
+                            start_to_close_timeout=timedelta(seconds=5),
+                        )
+                    except Exception:
+                        pass
+                    continue
+                await speak_handle
+
+            self._done_workflow(start_idx)
+            return reply
 
     @workflow.run
     async def run(self, reply_with_voice: bool) -> None:

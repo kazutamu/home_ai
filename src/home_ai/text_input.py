@@ -15,7 +15,7 @@ async def main():
             ChatAgentWorkflow.run,
             id=WF_ID,
             task_queue=TASK_QUEUE,
-            args=[False],
+            args=[True],
         )
         print("Workflow started:", WF_ID)
     except WorkflowAlreadyStartedError:
