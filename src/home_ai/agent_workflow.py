@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Optional
 
-from temporalio import workflow
+from temporalio import common, workflow
 
 
 @workflow.defn
@@ -21,6 +21,33 @@ class ChatAgentWorkflow:
     def _done_workflow(self, processed_idx: int) -> None:
         self.last_processed_idx = processed_idx
 
+    def _abandon_activity(self, handle: workflow.ActivityHandle) -> None:
+        def _swallow(fut) -> None:
+            try:
+                fut.exception()
+            except Exception:
+                pass
+
+        handle.add_done_callback(_swallow)
+
+    async def _wait_for_completion_or_new_input(
+        self, handle: workflow.ActivityHandle, start_idx: int
+    ) -> bool:
+        await workflow.wait_condition(
+            lambda: handle.done() or self.processing_idx > start_idx
+        )
+        return self.processing_idx > start_idx
+
+    async def _interrupt_speech(self, handle: workflow.ActivityHandle) -> None:
+        handle.cancel()
+        try:
+            await workflow.execute_local_activity(
+                "stop_audio",
+                start_to_close_timeout=timedelta(seconds=5),
+            )
+        except Exception:
+            pass
+
     @workflow.signal
     async def new_text_input(self, text: str) -> None:
         self._update_text(text)
@@ -34,43 +61,35 @@ class ChatAgentWorkflow:
                 "llm_respond",
                 text,
                 start_to_close_timeout=timedelta(seconds=30),
-                cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+                cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
+                retry_policy=common.RetryPolicy(maximum_attempts=1),
             )
 
-            await workflow.wait_condition(
-                lambda: reply_handle.done() or self.processing_idx > start_idx
-            )
-
-            if self.processing_idx > start_idx:
+            if await self._wait_for_completion_or_new_input(reply_handle, start_idx):
                 reply_handle.cancel()
-                try:
-                    await reply_handle
-                except Exception:
-                    pass
+                self._abandon_activity(reply_handle)
                 continue
 
             reply = await reply_handle
+            if self.processing_idx > start_idx:
+                continue
             if reply_with_voice:
                 speak_handle = workflow.start_activity(
                     "speak_text",
                     reply,
                     start_to_close_timeout=timedelta(seconds=60),
-                    cancellation_type=workflow.ActivityCancellationType.ABANDON,
+                    cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
+                    retry_policy=common.RetryPolicy(maximum_attempts=1),
                 )
-                await workflow.wait_condition(
-                    lambda: speak_handle.done() or self.processing_idx > start_idx
-                )
-                if self.processing_idx > start_idx:
-                    speak_handle.cancel()
-                    try:
-                        await workflow.execute_local_activity(
-                            "stop_audio",
-                            start_to_close_timeout=timedelta(seconds=5),
-                        )
-                    except Exception:
-                        pass
+                if await self._wait_for_completion_or_new_input(
+                    speak_handle, start_idx
+                ):
+                    await self._interrupt_speech(speak_handle)
+                    self._abandon_activity(speak_handle)
                     continue
                 await speak_handle
+                if self.processing_idx > start_idx:
+                    continue
 
             self._done_workflow(start_idx)
             return reply
