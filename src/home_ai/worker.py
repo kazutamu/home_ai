@@ -2,7 +2,13 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from .agent_activities import llm_respond, speak_text, stop_audio_activity
+from .agent_activities import (
+    cleanup_audio_file,
+    llm_respond,
+    play_audio_file,
+    stop_audio_activity,
+    synthesize_audio_file,
+)
 from .agent_workflow import ChatAgentWorkflow
 
 TASK_QUEUE = "agent-q"
@@ -16,7 +22,13 @@ async def main():
         client,
         task_queue=TASK_QUEUE,
         workflows=[ChatAgentWorkflow],
-        activities=[llm_respond, speak_text, stop_audio_activity],
+        activities=[
+            llm_respond,
+            synthesize_audio_file,
+            play_audio_file,
+            cleanup_audio_file,
+            stop_audio_activity,
+        ],
     )
     print("Worker started. Ctrl+C to stop.")
     await worker.run()

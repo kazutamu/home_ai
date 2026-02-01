@@ -3,6 +3,8 @@ from typing import Awaitable, Callable, Optional
 
 from temporalio import common, workflow
 
+from home_ai.workflow_utils import cleanup_audio_file, interrupt_speech
+
 
 @workflow.defn
 class ChatAgentWorkflow:
@@ -13,16 +15,6 @@ class ChatAgentWorkflow:
 
     def _arrived_new_input(self) -> bool:
         return self.generation > self.last_processed_generation
-
-    async def _interrupt_speech(self, handle: workflow.ActivityHandle) -> None:
-        handle.cancel()
-        try:
-            await workflow.execute_local_activity(
-                "stop_audio",
-                start_to_close_timeout=timedelta(seconds=5),
-            )
-        except Exception:
-            pass
 
     @workflow.signal
     async def new_text_input(self, text: str) -> None:
@@ -37,12 +29,20 @@ class ChatAgentWorkflow:
         on_cancel: Optional[
             Callable[[workflow.ActivityHandle], Awaitable[None]]
         ] = None,
+        on_cancel_result: Optional[Callable[[object], Awaitable[None]]] = None,
     ):
         handle = start_handle()
         await workflow.wait_condition(
             lambda: handle.done() or self.generation > start_generation
         )
         if self.generation > start_generation:
+            if handle.done():
+                try:
+                    result = await handle
+                except Exception:
+                    result = None
+                if on_cancel_result is not None and result is not None:
+                    await on_cancel_result(result)
             handle.cancel()
             if on_cancel is not None:
                 await on_cancel(handle)
@@ -67,22 +67,40 @@ class ChatAgentWorkflow:
             )
             if restarted:
                 continue
-            restarted, _ = await self._run_activity_step(
+
+            restarted, audio_path = await self._run_activity_step(
                 lambda: workflow.start_activity(
-                    "speak_text",
+                    "synthesize_audio_file",
                     reply,
                     start_to_close_timeout=timedelta(seconds=60),
                     cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
                     retry_policy=common.RetryPolicy(maximum_attempts=1),
                 ),
                 start_generation,
-                on_cancel=self._interrupt_speech,
+                on_cancel_result=cleanup_audio_file,
             )
             if restarted:
                 continue
 
-            self.last_processed_generation = start_generation
-            return reply
+            try:
+                restarted, _ = await self._run_activity_step(
+                    lambda: workflow.start_activity(
+                        "play_audio_file",
+                        audio_path,
+                        start_to_close_timeout=timedelta(seconds=60),
+                        cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
+                        retry_policy=common.RetryPolicy(maximum_attempts=1),
+                    ),
+                    start_generation,
+                    on_cancel=interrupt_speech,
+                )
+                if restarted:
+                    continue
+
+                self.last_processed_generation = start_generation
+                return reply
+            finally:
+                await cleanup_audio_file(audio_path)
 
     @workflow.run
     async def run(self) -> None:
