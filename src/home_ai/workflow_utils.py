@@ -1,7 +1,26 @@
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 
 from temporalio import workflow
+
+
+def update_history(
+    history: list[dict[str, str]],
+    user_text: str | None,
+    reply: str | None,
+    *,
+    max_turns: int,
+) -> list[dict[str, str]]:
+    updated = list(history)
+    if user_text:
+        updated.append({"role": "user", "content": user_text})
+    if reply:
+        updated.append({"role": "assistant", "content": reply})
+    max_messages = max_turns * 2
+    if len(updated) > max_messages:
+        updated = updated[-max_messages:]
+    return updated
 
 
 async def interrupt_speech(handle: workflow.ActivityHandle) -> None:
@@ -26,3 +45,7 @@ async def cleanup_audio_file(path: Optional[str]) -> None:
         )
     except Exception:
         pass
+@dataclass
+class LLMRequest:
+    text: str
+    history: list[dict[str, str]]

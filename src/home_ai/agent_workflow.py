@@ -3,7 +3,12 @@ from typing import Awaitable, Callable, Optional
 
 from temporalio import common, workflow
 
-from home_ai.workflow_utils import cleanup_audio_file, interrupt_speech
+from home_ai.workflow_utils import (
+    cleanup_audio_file,
+    interrupt_speech,
+    LLMRequest,
+    update_history,
+)
 
 
 @workflow.defn
@@ -12,6 +17,8 @@ class ChatAgentWorkflow:
         self.latest_text: Optional[str] = None
         self.generation: int = 0
         self.last_processed_generation: int = 0
+        self.history: list[dict[str, str]] = []
+        self.max_history_turns: int = 10
 
     def _arrived_new_input(self) -> bool:
         return self.generation > self.last_processed_generation
@@ -58,7 +65,7 @@ class ChatAgentWorkflow:
             restarted, reply = await self._run_activity_step(
                 lambda: workflow.start_activity(
                     "llm_respond",
-                    text,
+                    LLMRequest(text=text or "", history=list(self.history)),
                     start_to_close_timeout=timedelta(seconds=30),
                     cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
                     retry_policy=common.RetryPolicy(maximum_attempts=1),
@@ -97,6 +104,12 @@ class ChatAgentWorkflow:
                 if restarted:
                     continue
 
+                self.history = update_history(
+                    self.history,
+                    text,
+                    reply,
+                    max_turns=self.max_history_turns,
+                )
                 self.last_processed_generation = start_generation
                 return reply
             finally:

@@ -10,6 +10,7 @@ from temporalio.exceptions import CancelledError
 
 from .audio import load_wav, play_audio, stop_audio, write_wav
 from .chatbot import reply
+from .workflow_utils import LLMRequest
 from .models import TextToSpeech
 
 DEFAULT_PLAYBACK_SPEED = 1.1
@@ -54,8 +55,10 @@ def _make_cancel_handler(
 
 
 @activity.defn(name="llm_respond")
-async def llm_respond(text: str) -> str:
-    task = asyncio.create_task(asyncio.to_thread(reply, text))
+async def llm_respond(payload: LLMRequest) -> str:
+    task = asyncio.create_task(
+        asyncio.to_thread(reply, payload.text, payload.history)
+    )
     return await _run_task(task)
 
 
