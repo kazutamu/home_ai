@@ -12,28 +12,20 @@ PLAYBACK_SPEED = 1.25
 
 
 async def _wait_with_heartbeat(task: asyncio.Task, *, on_cancel):
+    while True:
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=0.1)
+        except asyncio.TimeoutError:
+            if activity.is_cancelled():
+                await on_cancel()
+        activity.heartbeat()
+
+
+async def _run_task(task: asyncio.Task, *, on_cancel, cancel_on_exit: bool = True):
     try:
-        while True:
-            try:
-                return await asyncio.wait_for(asyncio.shield(task), timeout=0.1)
-            except asyncio.TimeoutError:
-                if activity.is_cancelled():
-                    await on_cancel()
-            activity.heartbeat()
+        return await _wait_with_heartbeat(task, on_cancel=on_cancel)
     finally:
-        pass
-
-
-async def _run_task_with_cancel(task: asyncio.Task):
-    async def _handle_cancel() -> None:
-        if not task.done():
-            task.cancel()
-        raise CancelledError()
-
-    try:
-        return await _wait_with_heartbeat(task, on_cancel=_handle_cancel)
-    finally:
-        if not task.done():
+        if cancel_on_exit and not task.done():
             task.cancel()
 
 
@@ -45,7 +37,16 @@ async def _run_task_with_stop(task: asyncio.Task, stop_callback):
         finally:
             raise CancelledError()
 
-    return await _wait_with_heartbeat(task, on_cancel=_handle_cancel)
+    return await _run_task(task, on_cancel=_handle_cancel, cancel_on_exit=False)
+
+
+async def _run_task_with_cancel(task: asyncio.Task):
+    async def _handle_cancel() -> None:
+        if not task.done():
+            task.cancel()
+        raise CancelledError()
+
+    return await _run_task(task, on_cancel=_handle_cancel)
 
 
 @activity.defn(name="llm_respond")
@@ -75,9 +76,7 @@ async def speak_text(text: str) -> None:
         )
     )
     try:
-        cancelled = await _run_task_with_stop(playback_task, stop_event.set)
-        if cancelled:
-            raise CancelledError()
+        await _run_task_with_stop(playback_task, stop_event.set)
     finally:
         if not playback_task.done():
             stop_event.set()
