@@ -1,7 +1,11 @@
 from ollama import chat
 
 CHAT_MODEL = "llava:7b"
-SYSTEM_PROMPT = "Be concise and reply in no more than two short sentences."
+SYSTEM_PROMPT = (
+    "Respond in a warm, conversational, spoken style. Use natural phrasing, "
+    "contractions, and brief filler words where appropriate. Keep responses "
+    "clear but not terse."
+)
 
 
 def reply(user_text: str, history: list[dict[str, str]] | None = None) -> str:
