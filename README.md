@@ -56,6 +56,11 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 - `HOME_AI_AUDIO_BACKEND`: Audio playback backend (default: `ffplay`).
 - `OPENAI_API_KEY`: Required when `HOME_AI_LLM_BACKEND=openai`.
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`: Required when `HOME_AI_LLM_BACKEND=gemini`.
+- `HOME_AI_TTS_GOOGLE_LANGUAGE`: Google TTS language code (default: `en-US`).
+- `HOME_AI_TTS_GOOGLE_VOICE`: Optional Google TTS voice name.
+- `HOME_AI_TTS_GOOGLE_SAMPLE_RATE`: Output sample rate (default: `24000`).
+- `GOOGLE_APPLICATION_CREDENTIALS`: Required for Google TTS if not using
+  application default credentials.
 
 ## Notes on RAG
 
