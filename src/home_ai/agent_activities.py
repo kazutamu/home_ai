@@ -13,7 +13,7 @@ from .chatbot import reply
 from .search.embedding_search import search_local_docs
 from .workflow_utils import LLMRequest
 from .models import TextToSpeech
-from .notes import append_session_summary_from_transcript
+from .notes.conversation_notes import append_session_summary_from_transcript
 from .search.embedding_search import build_index
 
 DEFAULT_PLAYBACK_SPEED = 1.1
