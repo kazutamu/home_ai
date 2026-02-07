@@ -1,6 +1,4 @@
-from ollama import chat
-
-CHAT_MODEL = "llava:7b"
+from home_ai.backends import get_llm_client
 SYSTEM_PROMPT = (
     "Your name is Javis. "
     "Respond in a warm, conversational, spoken style. Use natural phrasing, "
@@ -35,12 +33,6 @@ def reply(
     if context_block:
         system_content = f"{SYSTEM_PROMPT}\n\n{context_block}"
     messages = [{"role": "system", "content": system_content}, *history]
-    response = chat(
-        model=CHAT_MODEL,
-        messages=[
-            *messages,
-            {"role": "user", "content": user_text},
-        ],
-        stream=False,
-    )
-    return response["message"]["content"]
+    messages.append({"role": "user", "content": user_text})
+    client = get_llm_client()
+    return client.chat(messages)

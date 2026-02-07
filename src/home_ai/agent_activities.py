@@ -8,13 +8,12 @@ from collections.abc import Callable
 from temporalio import activity
 from temporalio.exceptions import CancelledError
 
-from .audio import load_wav, play_audio, stop_audio, write_wav
+from .audio import load_wav, write_wav
+from .backends import get_audio_player, get_tts_engine
 from .chatbot import reply
-from .search.embedding_search import search_local_docs
-from .workflow_utils import LLMRequest
-from .models import TextToSpeech
 from .notes.conversation_notes import append_session_summary_from_transcript
-from .search.embedding_search import build_index
+from .search.embedding_search import build_index, search_local_docs
+from .workflow_utils import LLMRequest
 
 DEFAULT_PLAYBACK_SPEED = 1.1
 
@@ -72,7 +71,7 @@ async def llm_respond(payload: LLMRequest) -> str:
 
 @activity.defn(name="synthesize_audio_file")
 async def synthesize_audio_file(text: str) -> str:
-    tts = TextToSpeech()
+    tts = get_tts_engine()
     synth_task = asyncio.create_task(asyncio.to_thread(tts.synthesize, text))
     audio, sample_rate = await _run_task(synth_task)
 
@@ -97,10 +96,11 @@ async def synthesize_audio_file(text: str) -> str:
 @activity.defn(name="play_audio_file")
 async def play_audio_file(path: str) -> None:
     stop_event = threading.Event()
+    player = get_audio_player()
 
     def _play_wav_file(path: str, cancel_check: Callable[[], bool]) -> None:
         audio, sample_rate = load_wav(path)
-        play_audio(audio, sample_rate, DEFAULT_PLAYBACK_SPEED, cancel_check, None)
+        player.play(audio, sample_rate, DEFAULT_PLAYBACK_SPEED, cancel_check, None)
 
     playback_task = asyncio.create_task(
         asyncio.to_thread(_play_wav_file, path, stop_event.is_set)
@@ -123,7 +123,7 @@ async def cleanup_audio_file(path: str) -> None:
 
 @activity.defn(name="stop_audio")
 async def stop_audio_activity() -> None:
-    stop_audio()
+    get_audio_player().stop()
 
 
 @activity.defn(name="local_search")

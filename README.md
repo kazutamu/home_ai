@@ -45,8 +45,12 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 
 ## Configuration
 
+- `HOME_AI_LLM_BACKEND`: LLM backend (default: `ollama`).
+- `HOME_AI_LLM_MODEL`: Ollama model name (default: `llava:7b`).
+- `HOME_AI_TTS_BACKEND`: TTS backend (default: `coqui`).
 - `HOME_AI_TTS_MODEL`: Override the Coqui TTS model (default:
   `tts_models/en/vctk/vits`).
+- `HOME_AI_AUDIO_BACKEND`: Audio playback backend (default: `ffplay`).
 
 ## Notes on RAG
 

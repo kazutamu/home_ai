@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from home_ai.backends import get_llm_client
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONVERSATION_NOTES_PATH = PROJECT_ROOT / "docs/conversation_notes.md"
 SUMMARY_PROMPT = (
@@ -25,17 +27,13 @@ def _parse_iso(iso_value: str) -> datetime:
 
 
 def _generate_summary(transcript: str) -> str:
-    from ollama import chat
-
-    response = chat(
-        model="llava:7b",
-        messages=[
+    client = get_llm_client()
+    return client.chat(
+        [
             {"role": "system", "content": SUMMARY_PROMPT},
             {"role": "user", "content": transcript},
-        ],
-        stream=False,
+        ]
     )
-    return response["message"]["content"].strip()
 
 
 def append_session_summary_from_transcript(
