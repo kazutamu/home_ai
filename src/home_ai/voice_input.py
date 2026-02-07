@@ -1,11 +1,14 @@
 import asyncio
 import queue
 from collections import deque
+from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 import sounddevice as sd
 import webrtcvad
 from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .agent_workflow import ChatAgentWorkflow
 from .models import Transcriber
@@ -26,6 +29,46 @@ def frame_is_speech(frame_f32: np.ndarray) -> bool:
     return vad.is_speech(pcm16.tobytes(), SAMPLE_RATE)
 
 
+@dataclass
+class SpeechSegmenter:
+    frame_buffer: deque = field(default_factory=lambda: deque(maxlen=START_TRIGGER_FRAMES))
+    talking: bool = False
+    speech_streak: int = 0
+    silence_streak: int = 0
+    current_clip: list[np.ndarray] = field(default_factory=list)
+
+    def process_frame(self, mono: np.ndarray) -> Optional[np.ndarray]:
+        is_speech = frame_is_speech(mono)
+
+        if is_speech:
+            self.speech_streak += 1
+            self.silence_streak = 0
+        else:
+            self.silence_streak += 1
+            self.speech_streak = 0
+
+        if not self.talking and self.speech_streak >= START_TRIGGER_FRAMES:
+            self.talking = True
+            self.current_clip = list(self.frame_buffer)
+            print("\n[START TALKING]")
+
+        if self.talking:
+            self.current_clip.append(mono.copy())
+            print(".", end="", flush=True)
+
+            if self.silence_streak >= END_TRIGGER_FRAMES:
+                self.talking = False
+                self.frame_buffer.clear()
+                print("\n[END TALKING]")
+                if self.current_clip:
+                    audio = np.concatenate(self.current_clip)
+                    self.current_clip = []
+                    return audio
+
+        self.frame_buffer.append(mono.copy())
+        return None
+
+
 async def main():
     transcriber = Transcriber()
     client = await Client.connect(LOCAL_HOST)
@@ -37,7 +80,7 @@ async def main():
             task_queue=TASK_QUEUE,
         )
         print("Workflow started:", WF_ID)
-    except Exception:
+    except WorkflowAlreadyStartedError:
         print("Workflow already running:", WF_ID)
     except Exception as exc:
         print(f"Failed to start workflow: {exc}")
@@ -45,49 +88,19 @@ async def main():
 
     handle = client.get_workflow_handle(WF_ID)
 
-    frame_buffer = deque(maxlen=START_TRIGGER_FRAMES)
     audio_queue: queue.Queue[np.ndarray] = queue.Queue()
-    talking = False
-    speech_streak = 0
-    silence_streak = 0
-    current_clip = []
+    segmenter = SpeechSegmenter()
 
     print("Listening... (Ctrl+C to stop)")
 
     def callback(indata, frames, time_info, status):
-        nonlocal talking, speech_streak, silence_streak, current_clip
-
         if status:
             pass
 
         mono = indata[:, 0]
-
-        is_speech = frame_is_speech(mono)
-
-        if is_speech:
-            speech_streak += 1
-            silence_streak = 0
-        else:
-            silence_streak += 1
-            speech_streak = 0
-
-        if not talking and speech_streak >= START_TRIGGER_FRAMES:
-            talking = True
-            current_clip = list(frame_buffer)
-            print("\n[START TALKING]")
-
-        if talking:
-            current_clip.append(mono.copy())
-            print(".", end="", flush=True)
-
-            if silence_streak >= END_TRIGGER_FRAMES:
-                talking = False
-                if current_clip:
-                    audio_queue.put(np.concatenate(current_clip))
-                    current_clip = []
-                frame_buffer.clear()
-                print("\n[END TALKING]")
-        frame_buffer.append(mono.copy())
+        audio = segmenter.process_frame(mono)
+        if audio is not None:
+            audio_queue.put(audio)
 
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
