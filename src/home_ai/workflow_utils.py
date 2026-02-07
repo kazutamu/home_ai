@@ -49,3 +49,4 @@ async def cleanup_audio_file(path: Optional[str]) -> None:
 class LLMRequest:
     text: str
     history: list[dict[str, str]]
+    search_results: list[dict[str, str | int]] | None = None

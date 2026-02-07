@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .DS_Store
 uv.lock
+docs/
+data/home_ai_hnsw.index
+data/home_ai_hnsw_meta.json

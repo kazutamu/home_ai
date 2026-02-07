@@ -10,6 +10,7 @@ from temporalio.exceptions import CancelledError
 
 from .audio import load_wav, play_audio, stop_audio, write_wav
 from .chatbot import reply
+from .search.embedding_search import search_local_docs
 from .workflow_utils import LLMRequest
 from .models import TextToSpeech
 
@@ -57,7 +58,12 @@ def _make_cancel_handler(
 @activity.defn(name="llm_respond")
 async def llm_respond(payload: LLMRequest) -> str:
     task = asyncio.create_task(
-        asyncio.to_thread(reply, payload.text, payload.history)
+        asyncio.to_thread(
+            reply,
+            payload.text,
+            payload.history,
+            payload.search_results,
+        )
     )
     return await _run_task(task)
 
@@ -116,3 +122,17 @@ async def cleanup_audio_file(path: str) -> None:
 @activity.defn(name="stop_audio")
 async def stop_audio_activity() -> None:
     stop_audio()
+
+
+@activity.defn(name="local_search")
+async def local_search(query: str) -> list[dict[str, str | int]]:
+    results = await asyncio.to_thread(search_local_docs, query)
+    return [
+        {
+            "title": result.title,
+            "path": result.path,
+            "snippet": result.snippet,
+            "score": result.score,
+        }
+        for result in results
+    ]

@@ -62,10 +62,27 @@ class ChatAgentWorkflow:
             start_generation = self.generation
             text = self.latest_text
 
+            restarted, search_results = await self._run_activity_step(
+                lambda: workflow.start_activity(
+                    "local_search",
+                    text or "",
+                    start_to_close_timeout=timedelta(seconds=10),
+                    cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
+                    retry_policy=common.RetryPolicy(maximum_attempts=1),
+                ),
+                start_generation,
+            )
+            if restarted:
+                continue
+
             restarted, reply = await self._run_activity_step(
                 lambda: workflow.start_activity(
                     "llm_respond",
-                    LLMRequest(text=text or "", history=list(self.history)),
+                    LLMRequest(
+                        text=text or "",
+                        history=list(self.history),
+                        search_results=search_results or [],
+                    ),
                     start_to_close_timeout=timedelta(seconds=30),
                     cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
                     retry_policy=common.RetryPolicy(maximum_attempts=1),

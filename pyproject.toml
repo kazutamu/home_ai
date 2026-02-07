@@ -18,6 +18,8 @@ dependencies = [
     "numpy>=1.26.0",
     "webrtcvad>=2.0.10",
     "temporalio>=1.0.0",
+    "sentence-transformers>=2.6.0",
+    "hnswlib>=0.8.0",
 ]
 
 [project.scripts]
