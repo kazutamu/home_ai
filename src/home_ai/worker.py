@@ -1,4 +1,5 @@
 import asyncio
+import os
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -18,6 +19,7 @@ LOCAL_HOST = "localhost:7233"
 
 
 async def main():
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     client = await Client.connect(LOCAL_HOST)
     worker = Worker(
         client,

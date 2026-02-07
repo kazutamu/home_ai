@@ -1,15 +1,17 @@
+import os
 from typing import Tuple
 
 import numpy as np
 from TTS.api import TTS
 
-TTS_MODEL_NAME = "tts_models/en/ljspeech/tacotron2-DDC"
+TTS_MODEL_NAME = "tts_models/en/ljspeech/vits"
 
 
 class TextToSpeech:
     """Wraps TTS initialization and synthesis."""
 
     def __init__(self, model_name: str = TTS_MODEL_NAME) -> None:
+        model_name = os.environ.get("HOME_AI_TTS_MODEL", model_name)
         self.tts = TTS(model_name)
 
     def synthesize(self, text: str) -> Tuple[list[float], int]:
