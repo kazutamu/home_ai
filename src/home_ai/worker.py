@@ -4,6 +4,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from .agent_activities import (
+    append_session_summary_activity,
     cleanup_audio_file,
     llm_respond,
     local_search,
@@ -26,6 +27,7 @@ async def main():
         task_queue=TASK_QUEUE,
         workflows=[ChatAgentWorkflow],
         activities=[
+            append_session_summary_activity,
             llm_respond,
             local_search,
             synthesize_audio_file,

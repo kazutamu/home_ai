@@ -13,6 +13,8 @@ from .chatbot import reply
 from .search.embedding_search import search_local_docs
 from .workflow_utils import LLMRequest
 from .models import TextToSpeech
+from .notes import append_session_summary_from_transcript
+from .search.embedding_search import build_index
 
 DEFAULT_PLAYBACK_SPEED = 1.1
 
@@ -136,3 +138,17 @@ async def local_search(query: str) -> list[dict[str, str | int]]:
         }
         for result in results
     ]
+
+
+@activity.defn(name="append_session_summary")
+async def append_session_summary_activity(payload: dict[str, str]) -> None:
+    try:
+        await asyncio.to_thread(
+            append_session_summary_from_transcript,
+            payload.get("transcript", ""),
+            payload["start_time_iso"],
+        )
+        await asyncio.to_thread(build_index)
+        print("append_session_summary_activity: embeddings rebuilt")
+    except Exception as exc:
+        print(f"append_session_summary_activity: failed: {exc}")

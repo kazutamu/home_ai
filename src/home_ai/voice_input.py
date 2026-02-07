@@ -122,6 +122,11 @@ async def main():
             text = transcriber.transcribe(audio)
             if text:
                 print(f"\n[TRANSCRIBED] {text}")
+                normalized = text.strip().lower().strip(" .,!?:;\"'")
+                if normalized in {"quit", "exit", "stop"}:
+                    print("[INFO] Quit requested. Summarizing session.")
+                    await handle.signal(ChatAgentWorkflow.request_shutdown)
+                    break
                 await handle.signal(ChatAgentWorkflow.new_text_input, text)
             else:
                 print("\n[WARN] No speech recognized.")

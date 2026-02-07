@@ -4,10 +4,12 @@ from typing import Awaitable, Callable, Optional
 from temporalio import common, workflow
 
 from home_ai.workflow_utils import (
+    append_history,
+    build_history_transcript,
     cleanup_audio_file,
+    history_for_llm,
     interrupt_speech,
     LLMRequest,
-    update_history,
 )
 
 
@@ -19,6 +21,7 @@ class ChatAgentWorkflow:
         self.last_processed_generation: int = 0
         self.history: list[dict[str, str]] = []
         self.max_history_turns: int = 10
+        self.shutdown_requested: bool = False
 
     def _arrived_new_input(self) -> bool:
         return self.generation > self.last_processed_generation
@@ -27,6 +30,10 @@ class ChatAgentWorkflow:
     async def new_text_input(self, text: str) -> None:
         self.latest_text = text
         self.generation += 1
+
+    @workflow.signal
+    async def request_shutdown(self) -> None:
+        self.shutdown_requested = True
 
     async def _run_activity_step(
         self,
@@ -80,7 +87,7 @@ class ChatAgentWorkflow:
                     "llm_respond",
                     LLMRequest(
                         text=text or "",
-                        history=list(self.history),
+                        history=history_for_llm(self.history, max_turns=self.max_history_turns),
                         search_results=search_results or [],
                     ),
                     start_to_close_timeout=timedelta(seconds=30),
@@ -91,7 +98,6 @@ class ChatAgentWorkflow:
             )
             if restarted:
                 continue
-
             restarted, audio_path = await self._run_activity_step(
                 lambda: workflow.start_activity(
                     "synthesize_audio_file",
@@ -121,12 +127,7 @@ class ChatAgentWorkflow:
                 if restarted:
                     continue
 
-                self.history = update_history(
-                    self.history,
-                    text,
-                    reply,
-                    max_turns=self.max_history_turns,
-                )
+                append_history(self.history, text, reply)
                 self.last_processed_generation = start_generation
                 return reply
             finally:
@@ -135,7 +136,28 @@ class ChatAgentWorkflow:
     @workflow.run
     async def run(self) -> None:
         while True:
-            await workflow.wait_condition(self._arrived_new_input)
+            await workflow.wait_condition(
+                lambda: self._arrived_new_input() or self.shutdown_requested
+            )
+            if self.shutdown_requested:
+                try:
+                    transcript = build_history_transcript(self.history)
+                    await workflow.execute_activity(
+                        "append_session_summary",
+                        {
+                            "start_time_iso": workflow.now().isoformat(
+                                timespec="seconds"
+                            ),
+                            "transcript": transcript,
+                        },
+                        start_to_close_timeout=timedelta(seconds=30),
+                        cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
+                        retry_policy=common.RetryPolicy(maximum_attempts=1),
+                    )
+                except Exception:
+                    pass
+                return
             print("Input: ", self.latest_text)
             result = await self._execute_workflow()
             print("Home AI: ", result)
+

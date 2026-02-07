@@ -29,6 +29,7 @@ async def main():
         text = input("Enter text (or 'q' to quit): ").strip()
         if text.lower() == "q":
             print("Exiting.")
+            await handle.signal(ChatAgentWorkflow.request_shutdown)
             break
         await handle.signal(ChatAgentWorkflow.new_text_input, text)
 
