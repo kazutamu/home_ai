@@ -4,7 +4,7 @@ from typing import Tuple
 import numpy as np
 from TTS.api import TTS
 
-TTS_MODEL_NAME = "tts_models/en/ljspeech/vits"
+TTS_MODEL_NAME = "tts_models/en/vctk/vits"
 
 
 class TextToSpeech:
@@ -15,7 +15,7 @@ class TextToSpeech:
         self.tts = TTS(model_name)
 
     def synthesize(self, text: str) -> Tuple[list[float], int]:
-        wav = self.tts.tts(text=text)
+        wav = self.tts.tts(text=text, speaker="p231")
         # Temporal's default JSON converter cannot serialize numpy scalars (e.g. float32)
         # so force to plain Python floats.
         wav_list = np.asarray(wav, dtype=float).tolist()
