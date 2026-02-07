@@ -2,10 +2,13 @@
 
 Minimal uv project for a voice agent that:
 
-- records mic audio when someone is talking,
+- records mic audio when someone is talking (WebRTC VAD),
 - transcribes it with faster-whisper,
-- gets a concise response from Ollama, and
-- speaks the reply via Coqui TTS (played directly with ffplay).
+- answers with Ollama (optionally grounded on local docs),
+- synthesizes speech with Coqui TTS, and
+- plays audio via ffplay with cancel support.
+
+There are two entry points: `voice_input` (mic) and `text_input` (CLI).
 
 ## Prerequisites
 
@@ -13,6 +16,7 @@ Minimal uv project for a voice agent that:
 - `ffmpeg` (ffplay) on PATH
 - Ollama running locally with `llava:7b` pulled
 - `uv` installed (https://docs.astral.sh/uv/)
+- A running Temporal server at `localhost:7233`
 
 ## Setup
 
@@ -24,12 +28,28 @@ uv sync
 
 ## Run
 
-- Ensure a Temporal server is running and reachable at `temporal://localhost:7233`
-  (for local dev you can use `temporal server start-dev` or the Temporal Docker image).
-- Start the worker on the default task queue: `uv run python -m home_ai.worker`
-- Kick off the sample greeting workflow once: `uv run python -m home_ai.voice_input`
+1. Start a Temporal server (for local dev you can use `temporal server start-dev`).
+2. Start the worker on the default task queue:
+   `uv run python -m home_ai.worker`
+3. Start input:
+   - Voice input: `uv run python -m home_ai.voice_input`
+   - Text input: `uv run python -m home_ai.text_input`
 
-## To do
+Stopping:
 
-- Establish the RAG system such that the chat workflow can continue on conversation
-- Let the AI system control Home appliance
+- In voice mode, say "quit", "exit", or "stop" to end the session.
+- In text mode, enter `q`.
+
+On shutdown, the workflow writes a session summary to `docs/conversation_notes.md`
+and rebuilds a local embedding index in `data/` for retrieval-augmented responses.
+
+## Configuration
+
+- `HOME_AI_TTS_MODEL`: Override the Coqui TTS model (default:
+  `tts_models/en/vctk/vits`).
+
+## Notes on RAG
+
+Local search indexes files under `docs/` (`.md`, `.txt`, `.rst`) using
+`sentence-transformers` (`all-MiniLM-L6-v2`). The index is rebuilt at session
+shutdown and used to provide context to the Ollama chat model.
