@@ -13,6 +13,7 @@ from .agent_activities import (
     synthesize_audio_file,
 )
 from .agent_workflow import ChatAgentWorkflow
+from .config import load_environment
 
 TASK_QUEUE = "agent-q"
 WF_ID = "chat-session-1"
@@ -20,6 +21,7 @@ LOCAL_HOST = "localhost:7233"
 
 
 async def main():
+    load_environment()
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     client = await Client.connect(LOCAL_HOST)
     worker = Worker(

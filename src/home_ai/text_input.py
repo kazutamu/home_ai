@@ -3,11 +3,12 @@ from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .agent_workflow import ChatAgentWorkflow
-
+from .config import load_environment
 from .worker import WF_ID, TASK_QUEUE, LOCAL_HOST
 
 
 async def main():
+    load_environment()
     client = await Client.connect(LOCAL_HOST)
 
     try:

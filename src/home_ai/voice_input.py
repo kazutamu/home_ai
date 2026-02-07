@@ -11,6 +11,7 @@ from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .agent_workflow import ChatAgentWorkflow
+from .config import load_environment
 from .models import Transcriber
 from .worker import TASK_QUEUE, WF_ID, LOCAL_HOST
 
@@ -70,6 +71,7 @@ class SpeechSegmenter:
 
 
 async def main():
+    load_environment()
     transcriber = Transcriber()
     client = await Client.connect(LOCAL_HOST)
 

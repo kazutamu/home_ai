@@ -26,6 +26,9 @@ source .venv/bin/activate  # on Windows: .venv\Scripts\activate
 uv sync
 ```
 
+Create a `.env` file (see `.env.example`) and fill in any required secrets
+such as `OPENAI_API_KEY`.
+
 ## Run
 
 1. Start a Temporal server (for local dev you can use `temporal server start-dev`).
@@ -51,6 +54,8 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 - `HOME_AI_TTS_MODEL`: Override the Coqui TTS model (default:
   `tts_models/en/vctk/vits`).
 - `HOME_AI_AUDIO_BACKEND`: Audio playback backend (default: `ffplay`).
+- `OPENAI_API_KEY`: Required when `HOME_AI_LLM_BACKEND=openai`.
+- `GEMINI_API_KEY` or `GOOGLE_API_KEY`: Required when `HOME_AI_LLM_BACKEND=gemini`.
 
 ## Notes on RAG
 
