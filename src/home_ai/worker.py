@@ -8,6 +8,7 @@ from .agent_activities import (
     cleanup_audio_file,
     llm_respond,
     local_search,
+    synthesize_and_stream_audio,
     synthesize_audio_file,
     stream_audio_chunks,
 )
@@ -36,6 +37,7 @@ async def main():
             append_session_summary_activity,
             llm_respond,
             local_search,
+            synthesize_and_stream_audio,
             synthesize_audio_file,
             stream_audio_chunks,
             cleanup_audio_file,

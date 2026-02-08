@@ -56,6 +56,8 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 - `HOME_AI_TTS_BACKEND`: TTS backend (default: `coqui`).
 - `HOME_AI_TTS_MODEL`: Override the Coqui TTS model (default:
   `tts_models/en/vctk/vits`).
+- `HOME_AI_TTS_COQUI_SPEAKER_WAV`: Speaker reference WAV for XTTS streaming.
+- `HOME_AI_TTS_COQUI_LANGUAGE`: Language code for XTTS streaming (default: `en`).
 - `HOME_AI_AUDIO_STREAM_HOST`: HTTP stream host (default: `0.0.0.0`).
 - `HOME_AI_AUDIO_STREAM_PORT`: HTTP stream port (default: `8081`).
 - `HOME_AI_AUDIO_STREAM_URL`: HTTP stream URL for the client
@@ -73,3 +75,9 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 Local search indexes files under `docs/` (`.md`, `.txt`, `.rst`) using
 `sentence-transformers` (`all-MiniLM-L6-v2`). The index is rebuilt at session
 shutdown and used to provide context to the Ollama chat model.
+
+## Notes on TTS Streaming
+
+Coqui XTTS can stream audio chunks directly when using an XTTS model and a
+speaker reference WAV. Non-streaming models (like VITS) and Google TTS will
+use a temporary WAV file and stream it in chunks over HTTP.

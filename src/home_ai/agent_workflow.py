@@ -6,7 +6,6 @@ from temporalio import common, workflow
 from home_ai.workflow_utils import (
     append_history,
     build_history_transcript,
-    cleanup_audio_file,
     history_for_llm,
     LLMRequest,
 )
@@ -92,39 +91,22 @@ class ChatAgentWorkflow:
             )
             if restarted:
                 continue
-            restarted, audio_path = await self._run_activity_step(
+            restarted, _ = await self._run_activity_step(
                 lambda: workflow.start_activity(
-                    "synthesize_audio_file",
+                    "synthesize_and_stream_audio",
                     reply,
-                    start_to_close_timeout=timedelta(seconds=60),
+                    start_to_close_timeout=timedelta(seconds=120),
                     cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
                     retry_policy=common.RetryPolicy(maximum_attempts=1),
                 ),
                 start_generation,
-                on_cancel_result=cleanup_audio_file,
             )
             if restarted:
                 continue
 
-            try:
-                restarted, _ = await self._run_activity_step(
-                    lambda: workflow.start_activity(
-                        "stream_audio_chunks",
-                        audio_path,
-                        start_to_close_timeout=timedelta(seconds=60),
-                        cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
-                        retry_policy=common.RetryPolicy(maximum_attempts=1),
-                    ),
-                    start_generation,
-                )
-                if restarted:
-                    continue
-
-                append_history(self.history, text, reply)
-                self.last_processed_generation = start_generation
-                return reply
-            finally:
-                await cleanup_audio_file(audio_path)
+            append_history(self.history, text, reply)
+            self.last_processed_generation = start_generation
+            return reply
 
     @workflow.run
     async def run(self) -> None:

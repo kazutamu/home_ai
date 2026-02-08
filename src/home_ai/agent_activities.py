@@ -62,6 +62,29 @@ async def synthesize_audio_file(text: str) -> str:
     return path
 
 
+@activity.defn(name="synthesize_and_stream_audio")
+async def synthesize_and_stream_audio(text: str) -> None:
+    tts = get_tts_engine()
+    speaker_wav = os.environ.get("HOME_AI_TTS_COQUI_SPEAKER_WAV")
+    language = os.environ.get("HOME_AI_TTS_COQUI_LANGUAGE", "en")
+
+    if hasattr(tts, "supports_streaming") and tts.supports_streaming() and speaker_wav:
+        BROADCASTER.set_sample_rate(tts.output_sample_rate())
+        for chunk in tts.stream(text, speaker_wav=speaker_wav, language=language):
+            if activity.is_cancelled():
+                raise CancelledError()
+            BROADCASTER.publish(float_to_pcm16(chunk))
+            activity.heartbeat()
+            await asyncio.sleep(0)
+        return
+
+    path = await synthesize_audio_file(text)
+    try:
+        await stream_audio_chunks(path)
+    finally:
+        await cleanup_audio_file(path)
+
+
 @activity.defn(name="stream_audio_chunks")
 async def stream_audio_chunks(path: str) -> None:
     audio, sample_rate = await asyncio.to_thread(load_wav, path)
