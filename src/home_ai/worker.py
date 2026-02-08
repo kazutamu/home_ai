@@ -13,7 +13,7 @@ from .agent_activities import (
     stream_audio_chunks,
 )
 from .agent_workflow import ChatAgentWorkflow
-from .audio_stream import BROADCASTER, start_audio_stream_server
+from .audio.stream import BROADCASTER, start_audio_stream_server
 from .config import load_environment
 
 TASK_QUEUE = "agent-q"

@@ -6,7 +6,7 @@ from temporalio import activity
 from temporalio.exceptions import CancelledError
 
 from .audio import load_wav, write_wav
-from .audio_stream import BROADCASTER, DEFAULT_CHUNK_SIZE, float_to_pcm16
+from .audio.stream import BROADCASTER, DEFAULT_CHUNK_SIZE, float_to_pcm16
 from .backends import get_tts_engine
 from .chatbot import reply
 from .notes.conversation_notes import append_session_summary_from_transcript
