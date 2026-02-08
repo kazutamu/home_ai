@@ -2,58 +2,27 @@ import asyncio
 import contextlib
 import os
 import tempfile
-import threading
-from collections.abc import Callable
-
 from temporalio import activity
 from temporalio.exceptions import CancelledError
 
 from .audio import load_wav, write_wav
-from .backends import get_audio_player, get_tts_engine
+from .audio_stream import BROADCASTER, DEFAULT_CHUNK_SIZE, float_to_pcm16
+from .backends import get_tts_engine
 from .chatbot import reply
 from .notes.conversation_notes import append_session_summary_from_transcript
 from .search.embedding_search import build_index, search_local_docs
 from .workflow_utils import LLMRequest
 
-DEFAULT_PLAYBACK_SPEED = 1.1
-
-
-async def _wait_with_heartbeat(task: asyncio.Task, *, on_cancel):
+async def _run_task(task: asyncio.Task):
     while True:
         try:
             return await asyncio.wait_for(asyncio.shield(task), timeout=0.1)
         except asyncio.TimeoutError:
             if activity.is_cancelled():
-                await on_cancel()
-        activity.heartbeat()
-
-
-async def _run_task(task: asyncio.Task, *, on_cancel=None):
-    async def _default_cancel() -> None:
-        if not task.done():
-            task.cancel()
-        raise CancelledError()
-
-    if on_cancel is None:
-        on_cancel = _default_cancel
-    return await _wait_with_heartbeat(task, on_cancel=on_cancel)
-
-
-def _make_cancel_handler(
-    task: asyncio.Task, *, stop_callback: Callable[[], None] | None
-):
-    async def _handle_cancel() -> None:
-        if stop_callback is not None:
-            stop_callback()
-            try:
-                await task
-            finally:
+                if not task.done():
+                    task.cancel()
                 raise CancelledError()
-        if not task.done():
-            task.cancel()
-        raise CancelledError()
-
-    return _handle_cancel
+            activity.heartbeat()
 
 
 @activity.defn(name="llm_respond")
@@ -93,37 +62,27 @@ async def synthesize_audio_file(text: str) -> str:
     return path
 
 
-@activity.defn(name="play_audio_file")
-async def play_audio_file(path: str) -> None:
-    stop_event = threading.Event()
-    player = get_audio_player()
+@activity.defn(name="stream_audio_chunks")
+async def stream_audio_chunks(path: str) -> None:
+    audio, sample_rate = await asyncio.to_thread(load_wav, path)
+    BROADCASTER.set_sample_rate(sample_rate)
+    pcm_bytes = float_to_pcm16(audio)
 
-    def _play_wav_file(path: str, cancel_check: Callable[[], bool]) -> None:
-        audio, sample_rate = load_wav(path)
-        player.play(audio, sample_rate, DEFAULT_PLAYBACK_SPEED, cancel_check, None)
-
-    playback_task = asyncio.create_task(
-        asyncio.to_thread(_play_wav_file, path, stop_event.is_set)
-    )
-    try:
-        await _run_task(
-            playback_task,
-            on_cancel=_make_cancel_handler(playback_task, stop_callback=stop_event.set),
-        )
-    finally:
-        if not playback_task.done():
-            stop_event.set()
+    bytes_per_sample = 2
+    for idx in range(0, len(pcm_bytes), DEFAULT_CHUNK_SIZE):
+        if activity.is_cancelled():
+            raise CancelledError()
+        chunk = pcm_bytes[idx : idx + DEFAULT_CHUNK_SIZE]
+        BROADCASTER.publish(chunk)
+        activity.heartbeat()
+        # Pace sending to roughly real-time to avoid client-side buffering delay.
+        await asyncio.sleep(len(chunk) / (bytes_per_sample * sample_rate))
 
 
 @activity.defn(name="cleanup_audio_file")
 async def cleanup_audio_file(path: str) -> None:
     with contextlib.suppress(FileNotFoundError):
         os.remove(path)
-
-
-@activity.defn(name="stop_audio")
-async def stop_audio_activity() -> None:
-    get_audio_player().stop()
 
 
 @activity.defn(name="local_search")

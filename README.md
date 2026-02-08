@@ -6,9 +6,10 @@ Minimal uv project for a voice agent that:
 - transcribes it with faster-whisper,
 - answers with Ollama (optionally grounded on local docs),
 - synthesizes speech with Coqui TTS, and
-- plays audio via ffplay with cancel support.
+- streams audio over HTTP and can play locally via ffplay.
 
-There are two entry points: `voice_input` (mic) and `text_input` (CLI).
+There are three entry points: `voice_input` (mic), `text_input` (CLI), and
+`audio_stream_client` (play HTTP audio stream locally).
 
 ## Prerequisites
 
@@ -37,6 +38,8 @@ such as `OPENAI_API_KEY`.
 3. Start input:
    - Voice input: `uv run python -m home_ai.voice_input`
    - Text input: `uv run python -m home_ai.text_input`
+4. (Optional) Play the HTTP audio stream locally:
+   `uv run python -m home_ai.audio_stream_client`
 
 Stopping:
 
@@ -53,7 +56,10 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
 - `HOME_AI_TTS_BACKEND`: TTS backend (default: `coqui`).
 - `HOME_AI_TTS_MODEL`: Override the Coqui TTS model (default:
   `tts_models/en/vctk/vits`).
-- `HOME_AI_AUDIO_BACKEND`: Audio playback backend (default: `ffplay`).
+- `HOME_AI_AUDIO_STREAM_HOST`: HTTP stream host (default: `0.0.0.0`).
+- `HOME_AI_AUDIO_STREAM_PORT`: HTTP stream port (default: `8081`).
+- `HOME_AI_AUDIO_STREAM_URL`: HTTP stream URL for the client
+  (default: `http://localhost:8081/audio/stream`).
 - `OPENAI_API_KEY`: Required when `HOME_AI_LLM_BACKEND=openai`.
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`: Required when `HOME_AI_LLM_BACKEND=gemini`.
 - `HOME_AI_TTS_GOOGLE_LANGUAGE`: Google TTS language code (default: `en-US`).

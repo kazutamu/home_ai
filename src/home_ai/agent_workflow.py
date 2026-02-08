@@ -8,7 +8,6 @@ from home_ai.workflow_utils import (
     build_history_transcript,
     cleanup_audio_file,
     history_for_llm,
-    interrupt_speech,
     LLMRequest,
 )
 
@@ -40,9 +39,6 @@ class ChatAgentWorkflow:
         start_handle: Callable[[], workflow.ActivityHandle],
         start_generation: int,
         *,
-        on_cancel: Optional[
-            Callable[[workflow.ActivityHandle], Awaitable[None]]
-        ] = None,
         on_cancel_result: Optional[Callable[[object], Awaitable[None]]] = None,
     ):
         handle = start_handle()
@@ -55,11 +51,9 @@ class ChatAgentWorkflow:
                     result = await handle
                 except Exception:
                     result = None
-                if on_cancel_result is not None and result is not None:
-                    await on_cancel_result(result)
+            if on_cancel_result is not None and result is not None:
+                await on_cancel_result(result)
             handle.cancel()
-            if on_cancel is not None:
-                await on_cancel(handle)
             return True, None
         result = await handle
         return self.generation > start_generation, result
@@ -115,14 +109,13 @@ class ChatAgentWorkflow:
             try:
                 restarted, _ = await self._run_activity_step(
                     lambda: workflow.start_activity(
-                        "play_audio_file",
+                        "stream_audio_chunks",
                         audio_path,
                         start_to_close_timeout=timedelta(seconds=60),
                         cancellation_type=workflow.ActivityCancellationType.TRY_CANCEL,
                         retry_policy=common.RetryPolicy(maximum_attempts=1),
                     ),
                     start_generation,
-                    on_cancel=interrupt_speech,
                 )
                 if restarted:
                     continue
@@ -160,4 +153,3 @@ class ChatAgentWorkflow:
             print("Input: ", self.latest_text)
             result = await self._execute_workflow()
             print("Home AI: ", result)
-

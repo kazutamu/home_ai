@@ -8,11 +8,11 @@ from .agent_activities import (
     cleanup_audio_file,
     llm_respond,
     local_search,
-    play_audio_file,
-    stop_audio_activity,
     synthesize_audio_file,
+    stream_audio_chunks,
 )
 from .agent_workflow import ChatAgentWorkflow
+from .audio_stream import BROADCASTER, start_audio_stream_server
 from .config import load_environment
 
 TASK_QUEUE = "agent-q"
@@ -24,6 +24,10 @@ async def main():
     load_environment()
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     client = await Client.connect(LOCAL_HOST)
+    BROADCASTER.attach_loop(asyncio.get_running_loop())
+    host = os.environ.get("HOME_AI_AUDIO_STREAM_HOST", "0.0.0.0")
+    port = int(os.environ.get("HOME_AI_AUDIO_STREAM_PORT", "8081"))
+    runner = await start_audio_stream_server(host, port)
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
@@ -33,13 +37,15 @@ async def main():
             llm_respond,
             local_search,
             synthesize_audio_file,
-            play_audio_file,
+            stream_audio_chunks,
             cleanup_audio_file,
-            stop_audio_activity,
         ],
     )
     print("Worker started. Ctrl+C to stop.")
-    await worker.run()
+    try:
+        await worker.run()
+    finally:
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

@@ -41,17 +41,6 @@ def build_history_transcript(history: list[dict[str, str]]) -> str:
     return "\n\n".join(parts)
 
 
-async def interrupt_speech(handle: workflow.ActivityHandle) -> None:
-    handle.cancel()
-    try:
-        await workflow.execute_local_activity(
-            "stop_audio",
-            start_to_close_timeout=timedelta(seconds=5),
-        )
-    except Exception:
-        pass
-
-
 async def cleanup_audio_file(path: Optional[str]) -> None:
     if not path:
         return
