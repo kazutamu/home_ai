@@ -7,13 +7,9 @@ from typing import Optional
 import numpy as np
 import sounddevice as sd
 import webrtcvad
-from temporalio.client import Client
-from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from .agent_workflow import ChatAgentWorkflow
-from .config import load_environment
+from .input import InputEvent, InputEventType, InputSource, run_input_source
 from .models import Transcriber
-from .worker import TASK_QUEUE, WF_ID, LOCAL_HOST
 
 SAMPLE_RATE = 16000
 FRAME_MS = 30
@@ -70,68 +66,52 @@ class SpeechSegmenter:
         return None
 
 
-async def main():
-    load_environment()
-    transcriber = Transcriber()
-    client = await Client.connect(LOCAL_HOST)
+class VoiceInputSource(InputSource):
+    def __init__(self) -> None:
+        self._transcriber = Transcriber()
+        self._audio_queue: queue.Queue[np.ndarray] = queue.Queue()
+        self._segmenter = SpeechSegmenter()
 
-    try:
-        await client.start_workflow(
-            ChatAgentWorkflow.run,
-            id=WF_ID,
-            task_queue=TASK_QUEUE,
-        )
-        print("Workflow started:", WF_ID)
-    except WorkflowAlreadyStartedError:
-        print("Workflow already running:", WF_ID)
-    except Exception as exc:
-        print(f"Failed to start workflow: {exc}")
-        return
-
-    handle = client.get_workflow_handle(WF_ID)
-
-    audio_queue: queue.Queue[np.ndarray] = queue.Queue()
-    segmenter = SpeechSegmenter()
-
-    print("Listening... (Ctrl+C to stop)")
-
-    def callback(indata, frames, time_info, status):
+    def _callback(self, indata, frames, time_info, status) -> None:
         if status:
             pass
-
         mono = indata[:, 0]
-        audio = segmenter.process_frame(mono)
+        audio = self._segmenter.process_frame(mono)
         if audio is not None:
-            audio_queue.put(audio)
+            self._audio_queue.put(audio)
 
-    with sd.InputStream(
-        samplerate=SAMPLE_RATE,
-        channels=1,
-        dtype="float32",
-        blocksize=FRAME_SAMPLES,
-        callback=callback,
-    ):
-        while True:
+    async def events(self):
+        print("Listening... (Ctrl+C to stop)")
+        with sd.InputStream(
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            dtype="float32",
+            blocksize=FRAME_SAMPLES,
+            callback=self._callback,
+        ):
             try:
-                audio = audio_queue.get_nowait()
-            except queue.Empty:
-                await asyncio.sleep(0.05)
-                continue
+                while True:
+                    try:
+                        audio = self._audio_queue.get_nowait()
+                    except queue.Empty:
+                        await asyncio.sleep(0.05)
+                        continue
 
-            if audio.size == 0:
-                continue
+                    if audio.size == 0:
+                        continue
 
-            text = transcriber.transcribe(audio)
-            if text:
-                print(f"\n[TRANSCRIBED] {text}")
-                normalized = text.strip().lower().strip(" .,!?:;\"'")
-                if normalized in {"quit", "exit", "stop"}:
-                    print("[INFO] Quit requested. Summarizing session.")
-                    await handle.signal(ChatAgentWorkflow.request_shutdown)
-                    break
-                await handle.signal(ChatAgentWorkflow.new_text_input, text)
-            else:
-                print("\n[WARN] No speech recognized.")
+                    text = self._transcriber.transcribe(audio)
+                    if text:
+                        print(f"\n[TRANSCRIBED] {text}")
+                        yield InputEvent(InputEventType.TEXT, text=text)
+                    else:
+                        print("\n[WARN] No speech recognized.")
+            except asyncio.CancelledError:
+                return
+
+
+async def main():
+    await run_input_source(VoiceInputSource())
 
 
 if __name__ == "__main__":
