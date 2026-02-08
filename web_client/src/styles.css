@@ -1,0 +1,147 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&display=swap");
+
+:root {
+  color-scheme: light;
+  --bg: #f5f1e8;
+  --ink: #1f1b16;
+  --accent: #0f6b4f;
+  --muted: #6b6258;
+  --card: #fffaf2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  background: radial-gradient(circle at top, #fff2d6 0%, var(--bg) 45%, #efe9de 100%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.card {
+  width: min(760px, 100%);
+  background: var(--card);
+  border: 1px solid #e2d6c5;
+  box-shadow: 0 18px 40px rgba(31, 27, 22, 0.12);
+  border-radius: 16px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+h1 {
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+input[type="text"] {
+  flex: 1 1 320px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #d8c9b6;
+  font-size: 14px;
+  background: #fff;
+  color: var(--ink);
+}
+
+button {
+  border: none;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+button.secondary {
+  background: #2a2621;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 107, 79, 0.25);
+}
+
+.status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.log {
+  font-size: 12px;
+  color: #3b332a;
+  background: #f1e7d9;
+  padding: 12px 14px;
+  border-radius: 12px;
+  min-height: 64px;
+  white-space: pre-wrap;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.meter-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meter-value {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 44px;
+  text-align: right;
+}
+
+.meter-bar {
+  flex: 1;
+  height: 10px;
+  background: #eadfce;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #decfb9;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0f6b4f 0%, #1e9f75 60%, #f4a261 100%);
+  transition: width 80ms linear;
+}

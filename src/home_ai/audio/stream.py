@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Optional
 
 import numpy as np
-from aiohttp import web
 
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_CHUNK_SIZE = 4096
@@ -80,42 +79,28 @@ class AudioBroadcaster:
 BROADCASTER = AudioBroadcaster()
 
 
-async def _stream_handler(request: web.Request) -> web.StreamResponse:
-    queue = BROADCASTER.register()
-    peer = request.remote or "unknown"
-    print(f"[audio_stream] Client connected: {peer}")
-    await BROADCASTER.wait_for_format()
-    headers = {
+def stream_headers() -> dict[str, str]:
+    return {
         "Content-Type": "application/octet-stream",
         "Cache-Control": "no-store",
         "X-Audio-Format": "pcm_s16le",
         "X-Audio-Sample-Rate": str(BROADCASTER.sample_rate),
         "X-Audio-Channels": "1",
     }
-    response = web.StreamResponse(status=200, reason="OK", headers=headers)
-    await response.prepare(request)
+
+
+async def stream_generator() -> AsyncIterator[bytes]:
+    queue = BROADCASTER.register()
+    print("[audio_stream] Client connected")
     try:
+        await BROADCASTER.wait_for_format()
         while True:
             data = await queue.get()
             if data is None:
                 break
-            await response.write(data)
+            yield data
     except asyncio.CancelledError:
         raise
-    except Exception:
-        pass
     finally:
         BROADCASTER.unregister(queue)
-        print(f"[audio_stream] Client disconnected: {peer}")
-    return response
-
-
-async def start_audio_stream_server(host: str, port: int) -> web.AppRunner:
-    app = web.Application()
-    app.router.add_get("/audio/stream", _stream_handler)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host, port)
-    await site.start()
-    print(f"Audio stream server listening on http://{host}:{port}/audio/stream")
-    return runner
+        print("[audio_stream] Client disconnected")

@@ -33,13 +33,19 @@ such as `OPENAI_API_KEY`.
 ## Run
 
 1. Start a Temporal server (for local dev you can use `temporal server start-dev`).
-2. Start the worker on the default task queue:
-   `uv run python -m home_ai.worker`
+2. Start the backend (FastAPI + Temporal worker):
+   `uv run python -m home_ai.web.server`
 3. Start input:
    - Voice input: `uv run python -m home_ai.voice_input`
    - Text input: `uv run python -m home_ai.text_input`
 4. (Optional) Play the HTTP audio stream locally:
    `uv run python -m home_ai.audio_stream_client`
+5. (Optional) React dev client (Vite):
+   - `cd web_client`
+   - `npm install`
+   - `npm run dev`
+   - Open the URL shown by Vite (default `http://localhost:5173/`)
+   - This proxies `/input` and `/audio/stream` to `HOME_AI_WEB_PORT` (default `8080`).
 
 Stopping:
 
@@ -58,10 +64,11 @@ and rebuilds a local embedding index in `data/` for retrieval-augmented response
   `tts_models/en/vctk/vits`).
 - `HOME_AI_TTS_COQUI_SPEAKER_WAV`: Speaker reference WAV for XTTS streaming.
 - `HOME_AI_TTS_COQUI_LANGUAGE`: Language code for XTTS streaming (default: `en`).
-- `HOME_AI_AUDIO_STREAM_HOST`: HTTP stream host (default: `0.0.0.0`).
-- `HOME_AI_AUDIO_STREAM_PORT`: HTTP stream port (default: `8081`).
 - `HOME_AI_AUDIO_STREAM_URL`: HTTP stream URL for the client
-  (default: `http://localhost:8081/audio/stream`).
+  (default: `http://localhost:8080/audio/stream`).
+- `HOME_AI_WEB_HOST`: Web server host (default: `0.0.0.0`).
+- `HOME_AI_WEB_PORT`: Web server port (default: `8080`).
+- `VITE_API_TARGET`: Override Vite dev proxy target (default: `http://localhost:8080`).
 - `OPENAI_API_KEY`: Required when `HOME_AI_LLM_BACKEND=openai`.
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`: Required when `HOME_AI_LLM_BACKEND=gemini`.
 - `HOME_AI_TTS_GOOGLE_LANGUAGE`: Google TTS language code (default: `en-US`).

@@ -6,3 +6,9 @@ uv.lock
 docs/
 data/
 .env
+web_client/node_modules/
+web_client/dist/
+web_client/.vite/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log

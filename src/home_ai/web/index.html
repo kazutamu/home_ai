@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home AI Minimal Client</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f1e8;
+      --ink: #1f1b16;
+      --accent: #0f6b4f;
+      --muted: #6b6258;
+      --card: #fffaf2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: radial-gradient(circle at top, #fff2d6 0%, var(--bg) 45%, #efe9de 100%);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(680px, 100%);
+      background: var(--card);
+      border: 1px solid #e2d6c5;
+      box-shadow: 0 18px 40px rgba(31, 27, 22, 0.12);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 20px;
+      letter-spacing: 0.02em;
+      margin: 0 0 12px 0;
+    }
+    p {
+      margin: 0 0 16px 0;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      flex: 1 1 280px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #d8c9b6;
+      font-size: 14px;
+      background: #fff;
+      color: var(--ink);
+    }
+    button {
+      border: none;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+    button.secondary {
+      background: #2a2621;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(15, 107, 79, 0.25);
+    }
+    .status {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+    .log {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #3b332a;
+      background: #f1e7d9;
+      padding: 10px 12px;
+      border-radius: 10px;
+      min-height: 44px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Home AI Web Client</h1>
+    <p>Enter text, hit send, and listen to the streamed audio reply.</p>
+    <div class="row">
+      <input id="textInput" type="text" placeholder="Ask anything..." />
+      <button id="sendBtn">Send</button>
+      <button id="audioBtn" class="secondary">Start Audio</button>
+    </div>
+    <div class="status" id="status">Audio: stopped</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const inputEl = document.getElementById("textInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const audioBtn = document.getElementById("audioBtn");
+
+    let audioCtx = null;
+    let processor = null;
+    let streamReader = null;
+    let inputSampleRate = 16000;
+    let outputSampleRate = 48000;
+    let pending = [];
+    let streaming = false;
+
+    function log(message) {
+      const ts = new Date().toLocaleTimeString();
+      logEl.textContent = `[${ts}] ${message}\n` + logEl.textContent;
+    }
+
+    function resampleLinear(input, inRate, outRate) {
+      if (inRate === outRate) {
+        return input;
+      }
+      const ratio = outRate / inRate;
+      const outputLength = Math.max(1, Math.floor(input.length * ratio));
+      const output = new Float32Array(outputLength);
+      for (let i = 0; i < outputLength; i++) {
+        const sourceIndex = i / ratio;
+        const i0 = Math.floor(sourceIndex);
+        const i1 = Math.min(i0 + 1, input.length - 1);
+        const frac = sourceIndex - i0;
+        output[i] = input[i0] + (input[i1] - input[i0]) * frac;
+      }
+      return output;
+    }
+
+    function enqueueAudio(floatData) {
+      pending.push({ data: floatData, offset: 0 });
+    }
+
+    function setupAudio() {
+      if (audioCtx) {
+        return;
+      }
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      outputSampleRate = audioCtx.sampleRate;
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processor.onaudioprocess = (event) => {
+        const out = event.outputBuffer.getChannelData(0);
+        out.fill(0);
+        if (pending.length === 0) {
+          return;
+        }
+        let offset = 0;
+        while (pending.length > 0 && offset < out.length) {
+          const current = pending[0];
+          const remaining = current.data.length - current.offset;
+          const toCopy = Math.min(remaining, out.length - offset);
+          out.set(current.data.subarray(current.offset, current.offset + toCopy), offset);
+          current.offset += toCopy;
+          offset += toCopy;
+          if (current.offset >= current.data.length) {
+            pending.shift();
+          }
+        }
+      };
+      processor.connect(audioCtx.destination);
+    }
+
+    async function startAudioStream() {
+      if (streaming) {
+        return;
+      }
+      setupAudio();
+      try {
+        await audioCtx.resume();
+      } catch (err) {
+        log("Audio resume failed: " + err);
+      }
+      streaming = true;
+      statusEl.textContent = "Audio: connecting";
+      try {
+        const resp = await fetch("/audio/stream");
+        if (!resp.ok) {
+          throw new Error(`Stream error: ${resp.status}`);
+        }
+        const headerRate = resp.headers.get("X-Audio-Sample-Rate");
+        inputSampleRate = headerRate ? parseInt(headerRate, 10) : 16000;
+        statusEl.textContent = `Audio: streaming (${inputSampleRate} Hz)`;
+        log("Audio stream connected.");
+        streamReader = resp.body.getReader();
+        let leftover = new Uint8Array(0);
+        while (streaming) {
+          const { value, done } = await streamReader.read();
+          if (done) {
+            break;
+          }
+          if (!value || value.length === 0) {
+            continue;
+          }
+          let data = value;
+          if (leftover.length) {
+            const merged = new Uint8Array(leftover.length + data.length);
+            merged.set(leftover, 0);
+            merged.set(data, leftover.length);
+            data = merged;
+            leftover = new Uint8Array(0);
+          }
+          if (data.length % 2 === 1) {
+            leftover = data.slice(data.length - 1);
+            data = data.slice(0, data.length - 1);
+          }
+          if (data.length === 0) {
+            continue;
+          }
+          const samples = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
+          const floats = new Float32Array(samples.length);
+          for (let i = 0; i < samples.length; i++) {
+            floats[i] = samples[i] / 32768;
+          }
+          const resampled = resampleLinear(floats, inputSampleRate, outputSampleRate);
+          enqueueAudio(resampled);
+        }
+      } catch (err) {
+        log("Audio stream stopped: " + err);
+      } finally {
+        statusEl.textContent = "Audio: stopped";
+        streaming = false;
+      }
+    }
+
+    async function sendText() {
+      const text = inputEl.value.trim();
+      if (!text) {
+        return;
+      }
+      sendBtn.disabled = true;
+      try {
+        const resp = await fetch("/input", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to send");
+        }
+        log("Sent: " + text);
+        inputEl.value = "";
+      } catch (err) {
+        log("Send failed: " + err);
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    audioBtn.addEventListener("click", () => {
+      startAudioStream();
+    });
+
+    sendBtn.addEventListener("click", () => {
+      sendText();
+    });
+
+    inputEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        sendText();
+      }
+    });
+  </script>
+</body>
+</html>

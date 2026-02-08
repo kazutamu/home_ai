@@ -5,7 +5,7 @@ from aiohttp import ClientSession
 import numpy as np
 import sounddevice as sd
 
-DEFAULT_URL = "http://localhost:8081/audio/stream"
+DEFAULT_URL = "http://localhost:8080/audio/stream"
 
 
 async def main() -> None:
