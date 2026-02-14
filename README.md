@@ -61,6 +61,8 @@ Notes:
 
 - If `temporal` CLI is not installed, the script assumes Temporal is already
   running on `localhost:7233`.
+- If Temporal (`7233`) or backend (`HOME_AI_WEB_PORT`) is already running, the
+  script reuses it instead of starting a duplicate process.
 - Frontend port can be overridden with `VITE_PORT` (default `5173`).
 - Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
 
