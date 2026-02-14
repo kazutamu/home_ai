@@ -47,6 +47,22 @@ such as `OPENAI_API_KEY`.
    - Open the URL shown by Vite (default `http://localhost:5173/`)
    - This proxies `/input` and `/audio/stream` to `HOME_AI_WEB_PORT` (default `8080`).
 
+### One-command dev startup
+
+For local development, you can launch Temporal (if installed), backend, and the
+Vite client together:
+
+```bash
+./scripts/start-dev.sh
+```
+
+Notes:
+
+- If `temporal` CLI is not installed, the script assumes Temporal is already
+  running on `localhost:7233`.
+- Frontend port can be overridden with `VITE_PORT` (default `5173`).
+- Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
+
 Stopping:
 
 - In voice mode, say "quit", "exit", or "stop" to end the session.
