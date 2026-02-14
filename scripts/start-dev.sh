@@ -8,6 +8,7 @@ BACKEND_PORT="${HOME_AI_WEB_PORT:-8080}"
 FRONTEND_PORT="${VITE_PORT:-5173}"
 TEMPORAL_LOG="${HOME_AI_TEMPORAL_LOG:-/tmp/home-ai-temporal.log}"
 TEMPORAL_PORT="${HOME_AI_TEMPORAL_PORT:-7233}"
+API_TARGET="${VITE_API_TARGET:-http://localhost:${BACKEND_PORT}}"
 
 is_port_in_use() {
   local port="$1"
@@ -61,9 +62,11 @@ fi
 
 (
   cd web_client
+  export VITE_API_TARGET="${API_TARGET}"
   npm run dev -- --host 0.0.0.0 --port "${FRONTEND_PORT}"
 ) &
 echo "Frontend dev server starting at http://localhost:${FRONTEND_PORT}"
+echo "Frontend proxy target: ${API_TARGET}"
 
 echo "Press Ctrl+C to stop all services."
 wait

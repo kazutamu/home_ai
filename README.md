@@ -67,6 +67,8 @@ Notes:
   fast with guidance instead of proceeding with a broken setup.
 - Frontend port can be overridden with `VITE_PORT` (default `5173`).
 - Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
+- `VITE_API_TARGET` is auto-derived as `http://localhost:$HOME_AI_WEB_PORT`
+  unless you override it explicitly.
 
 Stopping:
 
