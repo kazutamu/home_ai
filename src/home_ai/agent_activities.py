@@ -65,6 +65,7 @@ async def synthesize_audio_file(text: str) -> str:
 @activity.defn(name="synthesize_and_stream_audio")
 async def synthesize_and_stream_audio(text: str) -> None:
     tts = get_tts_engine()
+    stream_epoch = BROADCASTER.interrupt()
     speaker_wav = os.environ.get("HOME_AI_TTS_COQUI_SPEAKER_WAV")
     language = os.environ.get("HOME_AI_TTS_COQUI_LANGUAGE", "en")
 
@@ -73,20 +74,20 @@ async def synthesize_and_stream_audio(text: str) -> None:
         for chunk in tts.stream(text, speaker_wav=speaker_wav, language=language):
             if activity.is_cancelled():
                 raise CancelledError()
-            BROADCASTER.publish(float_to_pcm16(chunk))
+            BROADCASTER.publish(float_to_pcm16(chunk), stream_epoch=stream_epoch)
             activity.heartbeat()
             await asyncio.sleep(0)
         return
 
     path = await synthesize_audio_file(text)
     try:
-        await stream_audio_chunks(path)
+        await stream_audio_chunks(path, stream_epoch=stream_epoch)
     finally:
         await cleanup_audio_file(path)
 
 
 @activity.defn(name="stream_audio_chunks")
-async def stream_audio_chunks(path: str) -> None:
+async def stream_audio_chunks(path: str, stream_epoch: int | None = None) -> None:
     audio, sample_rate = await asyncio.to_thread(load_wav, path)
     BROADCASTER.set_sample_rate(sample_rate)
     pcm_bytes = float_to_pcm16(audio)
@@ -96,7 +97,7 @@ async def stream_audio_chunks(path: str) -> None:
         if activity.is_cancelled():
             raise CancelledError()
         chunk = pcm_bytes[idx : idx + DEFAULT_CHUNK_SIZE]
-        BROADCASTER.publish(chunk)
+        BROADCASTER.publish(chunk, stream_epoch=stream_epoch)
         activity.heartbeat()
         # Pace sending to roughly real-time to avoid client-side buffering delay.
         await asyncio.sleep(len(chunk) / (bytes_per_sample * sample_rate))

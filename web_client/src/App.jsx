@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 
 const DEFAULT_SAMPLE_RATE = 16000;
 const MIC_TARGET_RATE = 16000;
+const MIC_RMS_THRESHOLD = 0.007;
+const MIC_START_TRIGGER_FRAMES = 1;
+const MIC_END_TRIGGER_FRAMES = 4;
+const MIC_MIN_SEGMENT_SECONDS = 0.25;
+const MIC_PREROLL_CHUNKS = 2;
 
 function resampleLinear(input, inRate, outRate) {
   if (inRate === outRate) {
@@ -215,6 +220,10 @@ function useAudioStream() {
     pendingRef.current = [];
   };
 
+  const clearPending = () => {
+    pendingRef.current = [];
+  };
+
   useEffect(() => () => {
     stop();
     processorRef.current?.disconnect();
@@ -226,20 +235,48 @@ function useAudioStream() {
     sampleRate,
     levelRef,
     start,
-    stop
+    stop,
+    clearPending
   };
 }
 
-function useMicRecorder() {
+function useMicRecorder(onSegmentReady) {
   const [status, setStatus] = useState("idle");
   const levelRef = useRef(0);
-  const chunksRef = useRef([]);
   const audioCtxRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
   const processorRef = useRef(null);
+  const speakingRef = useRef(false);
+  const speechFramesRef = useRef(0);
+  const silenceFramesRef = useRef(0);
+  const preRollRef = useRef([]);
+  const currentSegmentRef = useRef([]);
 
-  const startRecording = async () => {
+  const emitSegment = async (chunks, inputRate) => {
+    const merged = mergeFloat32(chunks);
+    if (!merged.length) {
+      return;
+    }
+    const minSamples = Math.floor(inputRate * MIC_MIN_SEGMENT_SECONDS);
+    if (merged.length < minSamples) {
+      return;
+    }
+    const resampled = resampleLinear(merged, inputRate, MIC_TARGET_RATE);
+    const blob = encodeWavPcm16(resampled, MIC_TARGET_RATE);
+    await onSegmentReady(blob);
+  };
+
+  const finalizeSegment = (inputRate) => {
+    const chunks = currentSegmentRef.current;
+    if (!chunks.length) {
+      return;
+    }
+    currentSegmentRef.current = [];
+    void emitSegment(chunks, inputRate);
+  };
+
+  const startListening = async () => {
     if (status !== "idle") {
       return;
     }
@@ -247,7 +284,11 @@ function useMicRecorder() {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     await audioCtx.resume();
 
-    chunksRef.current = [];
+    speakingRef.current = false;
+    speechFramesRef.current = 0;
+    silenceFramesRef.current = 0;
+    preRollRef.current = [];
+    currentSegmentRef.current = [];
     streamRef.current = stream;
     audioCtxRef.current = audioCtx;
 
@@ -256,7 +297,6 @@ function useMicRecorder() {
 
     processor.onaudioprocess = (event) => {
       const channel = event.inputBuffer.getChannelData(0);
-      chunksRef.current.push(new Float32Array(channel));
 
       let sum = 0;
       for (let i = 0; i < channel.length; i++) {
@@ -266,20 +306,54 @@ function useMicRecorder() {
       const rms = Math.sqrt(sum / Math.max(1, channel.length));
       const scaled = Math.min(1, rms * 8);
       levelRef.current = levelRef.current * 0.82 + scaled * 0.18;
+
+      const chunk = new Float32Array(channel);
+      const isSpeech = rms >= MIC_RMS_THRESHOLD;
+      const inputRate = audioCtx.sampleRate || MIC_TARGET_RATE;
+
+      if (isSpeech) {
+        speechFramesRef.current += 1;
+        silenceFramesRef.current = 0;
+      } else {
+        silenceFramesRef.current += 1;
+        speechFramesRef.current = 0;
+      }
+
+      if (!speakingRef.current) {
+        preRollRef.current.push(chunk);
+        if (preRollRef.current.length > MIC_PREROLL_CHUNKS) {
+          preRollRef.current.shift();
+        }
+      }
+
+      if (!speakingRef.current && speechFramesRef.current >= MIC_START_TRIGGER_FRAMES) {
+        speakingRef.current = true;
+        currentSegmentRef.current = [...preRollRef.current];
+      }
+
+      if (speakingRef.current) {
+        currentSegmentRef.current.push(chunk);
+        if (silenceFramesRef.current >= MIC_END_TRIGGER_FRAMES) {
+          speakingRef.current = false;
+          speechFramesRef.current = 0;
+          silenceFramesRef.current = 0;
+          preRollRef.current = [];
+          finalizeSegment(inputRate);
+        }
+      }
     };
 
     source.connect(processor);
     processor.connect(audioCtx.destination);
     sourceRef.current = source;
     processorRef.current = processor;
-    setStatus("recording");
+    setStatus("listening");
   };
 
-  const stopRecording = async () => {
-    if (status !== "recording") {
-      return null;
+  const stopListening = async () => {
+    if (status !== "listening") {
+      return;
     }
-    setStatus("processing");
 
     sourceRef.current?.disconnect();
     processorRef.current?.disconnect();
@@ -295,21 +369,13 @@ function useMicRecorder() {
     processorRef.current = null;
     streamRef.current = null;
     audioCtxRef.current = null;
-
-    const merged = mergeFloat32(chunksRef.current);
-    chunksRef.current = [];
-
-    if (!merged.length) {
-      setStatus("idle");
-      return null;
-    }
-
-    const resampled = resampleLinear(merged, inputRate, MIC_TARGET_RATE);
-    const blob = encodeWavPcm16(resampled, MIC_TARGET_RATE);
-
+    speakingRef.current = false;
+    speechFramesRef.current = 0;
+    silenceFramesRef.current = 0;
+    preRollRef.current = [];
+    finalizeSegment(inputRate);
     setStatus("idle");
     levelRef.current = 0;
-    return blob;
   };
 
   useEffect(() => () => {
@@ -322,8 +388,8 @@ function useMicRecorder() {
   return {
     status,
     levelRef,
-    startRecording,
-    stopRecording
+    startListening,
+    stopListening
   };
 }
 
@@ -333,14 +399,50 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [speakerLevel, setSpeakerLevel] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
+  const segmentQueueRef = useRef(Promise.resolve());
 
-  const { status, sampleRate, levelRef, start, stop } = useAudioStream();
+  const { status, sampleRate, levelRef, start, stop, clearPending } = useAudioStream();
+  const processVoiceSegment = async (blob) => {
+    const formData = new FormData();
+    formData.append("audio", blob, "voice.wav");
+
+    const resp = await fetch("/voice/transcribe", {
+      method: "POST",
+      body: formData
+    });
+    if (!resp.ok) {
+      const message = await extractErrorMessage(resp, "Transcription failed");
+      throw new Error(message);
+    }
+    const data = await resp.json().catch(() => ({}));
+    const transcript = (data.text || "").trim();
+    if (!transcript) {
+      addLog("No speech recognized");
+      return;
+    }
+
+    addLog(`Voice transcript: ${transcript}`);
+    const sent = await submitText(transcript);
+    if (!sent) {
+      setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    }
+  };
+
+  const onVoiceSegmentReady = async (blob) => {
+    segmentQueueRef.current = segmentQueueRef.current
+      .then(() => processVoiceSegment(blob))
+      .catch((err) => {
+        addLog(`Voice input failed: ${err.message || err}`);
+      });
+    await segmentQueueRef.current;
+  };
+
   const {
     status: micStatus,
     levelRef: micLevelRef,
-    startRecording,
-    stopRecording
-  } = useMicRecorder();
+    startListening,
+    stopListening
+  } = useMicRecorder(onVoiceSegmentReady);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -355,11 +457,11 @@ export default function App() {
     setLog((prev) => [`[${ts}] ${message}`, ...prev].slice(0, 12));
   };
 
-  const sendText = async () => {
-    const payload = text.trim();
+  const submitText = async (payload) => {
     if (!payload) {
-      return;
+      return false;
     }
+    clearPending();
     setSending(true);
     try {
       const resp = await fetch("/input", {
@@ -372,52 +474,38 @@ export default function App() {
         throw new Error(message);
       }
       addLog(`Sent: ${payload}`);
-      setText("");
+      return true;
     } catch (err) {
       addLog(`Send failed: ${err.message || err}`);
+      return false;
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendText = async () => {
+    const payload = text.trim();
+    if (!payload) {
+      return;
+    }
+    const ok = await submitText(payload);
+    if (ok) {
+      setText("");
     }
   };
 
   const onMicButton = async () => {
     try {
       if (micStatus === "idle") {
-        await startRecording();
-        addLog("Voice capture started");
+        await startListening();
+        addLog("Voice capture started (auto send enabled)");
         return;
       }
-      if (micStatus !== "recording") {
+      if (micStatus !== "listening") {
         return;
       }
-
-      const blob = await stopRecording();
-      if (!blob) {
-        addLog("No voice detected");
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("audio", blob, "voice.wav");
-
-      const resp = await fetch("/voice/transcribe", {
-        method: "POST",
-        body: formData
-      });
-      if (!resp.ok) {
-        const message = await extractErrorMessage(resp, "Transcription failed");
-        throw new Error(message);
-      }
-      const data = await resp.json().catch(() => ({}));
-
-      const transcript = (data.text || "").trim();
-      if (!transcript) {
-        addLog("No speech recognized");
-        return;
-      }
-
-      setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-      addLog(`Voice transcript: ${transcript}`);
+      await stopListening();
+      addLog("Voice capture stopped");
     } catch (err) {
       addLog(`Voice input failed: ${err.message || err}`);
     }
@@ -448,11 +536,10 @@ export default function App() {
 
         <div className="row">
           <button
-            className={micStatus === "recording" ? "danger" : "secondary"}
+            className={micStatus === "listening" ? "danger" : "secondary"}
             onClick={onMicButton}
-            disabled={micStatus === "processing"}
           >
-            {micStatus === "recording" ? "Stop Voice" : micStatus === "processing" ? "Processing..." : "Record Voice"}
+            {micStatus === "listening" ? "Stop Voice" : "Record Voice"}
           </button>
           <div className="status">Mic: {micStatus}</div>
         </div>

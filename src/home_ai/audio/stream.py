@@ -23,6 +23,7 @@ class AudioBroadcaster:
         self._clients_lock = threading.Lock()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._sample_rate = DEFAULT_SAMPLE_RATE
+        self._stream_epoch = 0
         self._format_ready = asyncio.Event()
 
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -52,16 +53,43 @@ class AudioBroadcaster:
         with self._clients_lock:
             self._clients.discard(queue)
 
-    def publish(self, data: bytes) -> None:
+    def interrupt(self) -> int:
+        loop = self._loop
+        with self._clients_lock:
+            self._stream_epoch += 1
+            epoch = self._stream_epoch
+            clients = list(self._clients)
+        if loop is None or not clients:
+            return epoch
+
+        def _flush() -> None:
+            for queue in clients:
+                while True:
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+
+        loop.call_soon_threadsafe(_flush)
+        return epoch
+
+    def publish(self, data: bytes, *, stream_epoch: int | None = None) -> None:
         loop = self._loop
         if loop is None:
             return
         with self._clients_lock:
+            current_epoch = self._stream_epoch
             clients = list(self._clients)
+        if stream_epoch is not None and stream_epoch != current_epoch:
+            return
         if not clients:
             return
 
         def _publish() -> None:
+            with self._clients_lock:
+                latest_epoch = self._stream_epoch
+            if stream_epoch is not None and stream_epoch != latest_epoch:
+                return
             for queue in clients:
                 if queue.full():
                     try:

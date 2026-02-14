@@ -45,6 +45,7 @@ class ChatAgentWorkflow:
             lambda: handle.done() or self.generation > start_generation
         )
         if self.generation > start_generation:
+            result = None
             if handle.done():
                 try:
                     result = await handle

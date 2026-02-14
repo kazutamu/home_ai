@@ -93,6 +93,8 @@ async def input_text(payload: dict) -> JSONResponse:
     text = raw.strip()
     client: Client = app.state.temporal_client
     try:
+        # Cut any in-flight/queued audio immediately when a new user entry arrives.
+        BROADCASTER.interrupt()
         handle = await ensure_workflow_handle(client, quiet=True)
         if normalize_shutdown_command(text):
             await handle.signal(ChatAgentWorkflow.request_shutdown)
