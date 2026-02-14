@@ -8,8 +8,8 @@ Minimal uv project for a voice agent that:
 - synthesizes speech with Coqui TTS, and
 - streams audio over HTTP and can play locally via ffplay.
 
-There are three entry points: `voice_input` (mic), `text_input` (CLI), and
-`audio_stream_client` (play HTTP audio stream locally).
+Primary interaction is via the web frontend. `audio_stream_client` is available
+for local HTTP audio stream playback.
 
 ## Prerequisites
 
@@ -35,12 +35,9 @@ such as `OPENAI_API_KEY`.
 1. Start a Temporal server (for local dev you can use `temporal server start-dev`).
 2. Start the backend (FastAPI + Temporal worker):
    `uv run python -m home_ai.web.server`
-3. Start input:
-   - Voice input: `uv run python -m home_ai.voice_input`
-   - Text input: `uv run python -m home_ai.text_input`
-4. (Optional) Play the HTTP audio stream locally:
+3. (Optional) Play the HTTP audio stream locally:
    `uv run python -m home_ai.audio_stream_client`
-5. (Optional) React dev client (Vite):
+4. (Optional) React dev client (Vite):
    - `cd web_client`
    - `npm install`
    - `npm run dev`
@@ -69,11 +66,6 @@ Notes:
 - Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
 - `VITE_API_TARGET` is auto-derived as `http://localhost:$HOME_AI_WEB_PORT`
   unless you override it explicitly.
-
-Stopping:
-
-- In voice mode, say "quit", "exit", or "stop" to end the session.
-- In text mode, enter `q`.
 
 On shutdown, the workflow writes a session summary to `docs/conversation_notes.md`
 and rebuilds a local embedding index in `data/` for retrieval-augmented responses.
