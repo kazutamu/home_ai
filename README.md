@@ -63,6 +63,8 @@ Notes:
   running on `localhost:7233`.
 - If Temporal (`7233`) or backend (`HOME_AI_WEB_PORT`) is already running, the
   script reuses it instead of starting a duplicate process.
+- If `HOME_AI_WEB_PORT` is occupied by a non-Home AI service, the script fails
+  fast with guidance instead of proceeding with a broken setup.
 - Frontend port can be overridden with `VITE_PORT` (default `5173`).
 - Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
 

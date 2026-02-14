@@ -14,6 +14,13 @@ is_port_in_use() {
   lsof -ti "tcp:${port}" >/dev/null 2>&1
 }
 
+is_home_ai_backend() {
+  local port="$1"
+  local body
+  body="$(curl -sS --max-time 2 "http://127.0.0.1:${port}/" || true)"
+  [[ "$body" == *"Home AI"* ]]
+}
+
 cleanup() {
   local pids
   pids=$(jobs -p) || true
@@ -35,7 +42,13 @@ else
 fi
 
 if is_port_in_use "$BACKEND_PORT"; then
-  echo "Backend port ${BACKEND_PORT} already in use; assuming backend is already running."
+  if is_home_ai_backend "$BACKEND_PORT"; then
+    echo "Backend already running at http://localhost:${BACKEND_PORT}; reusing it."
+  else
+    echo "Port ${BACKEND_PORT} is in use by a different service."
+    echo "Stop that process or run with HOME_AI_WEB_PORT=<free-port> and matching VITE_API_TARGET."
+    exit 1
+  fi
 else
   uv run python -m home_ai.web.server &
   echo "Backend started at http://localhost:${BACKEND_PORT}"

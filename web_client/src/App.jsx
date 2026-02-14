@@ -70,6 +70,23 @@ function encodeWavPcm16(samples, sampleRate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+async function extractErrorMessage(resp, fallback) {
+  const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    const data = await resp.json().catch(() => ({}));
+    const message = data.detail || data.error || data.message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  } else {
+    const text = await resp.text().catch(() => "");
+    if (text.trim()) {
+      return text.trim().slice(0, 200);
+    }
+  }
+  return `${fallback} (HTTP ${resp.status})`;
+}
+
 function useAudioStream() {
   const audioCtxRef = useRef(null);
   const processorRef = useRef(null);
@@ -351,8 +368,8 @@ export default function App() {
         body: JSON.stringify({ text: payload })
       });
       if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to send");
+        const message = await extractErrorMessage(resp, "Failed to send");
+        throw new Error(message);
       }
       addLog(`Sent: ${payload}`);
       setText("");
@@ -387,10 +404,11 @@ export default function App() {
         method: "POST",
         body: formData
       });
-      const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        throw new Error(data.detail || "Transcription failed");
+        const message = await extractErrorMessage(resp, "Transcription failed");
+        throw new Error(message);
       }
+      const data = await resp.json().catch(() => ({}));
 
       const transcript = (data.text || "").trim();
       if (!transcript) {
