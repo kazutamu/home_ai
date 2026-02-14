@@ -1,4 +1,5 @@
 import wave
+from io import BytesIO
 from typing import Sequence, Tuple
 
 import numpy as np
@@ -18,12 +19,9 @@ def write_wav(path: str, audio: Sequence[float], sample_rate: int) -> None:
         wav_file.writeframes(pcm_bytes)
 
 
-def load_wav(path: str) -> Tuple[np.ndarray, int]:
-    with wave.open(path, "rb") as wav_file:
-        channels = wav_file.getnchannels()
-        sample_rate = wav_file.getframerate()
-        sampwidth = wav_file.getsampwidth()
-        frames = wav_file.readframes(wav_file.getnframes())
+def _decode_wav_frames(
+    frames: bytes, channels: int, sample_rate: int, sampwidth: int
+) -> Tuple[np.ndarray, int]:
     if sampwidth != 2:
         msg = f"Unsupported sample width: {sampwidth}"
         raise ValueError(msg)
@@ -32,3 +30,21 @@ def load_wav(path: str) -> Tuple[np.ndarray, int]:
         audio = audio.reshape(-1, channels)[:, 0]
     audio_f32 = audio.astype(np.float32) / 32767.0
     return audio_f32, sample_rate
+
+
+def load_wav(path: str) -> Tuple[np.ndarray, int]:
+    with wave.open(path, "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_rate = wav_file.getframerate()
+        sampwidth = wav_file.getsampwidth()
+        frames = wav_file.readframes(wav_file.getnframes())
+    return _decode_wav_frames(frames, channels, sample_rate, sampwidth)
+
+
+def load_wav_bytes(data: bytes) -> Tuple[np.ndarray, int]:
+    with wave.open(BytesIO(data), "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_rate = wav_file.getframerate()
+        sampwidth = wav_file.getsampwidth()
+        frames = wav_file.readframes(wav_file.getnframes())
+    return _decode_wav_frames(frames, channels, sample_rate, sampwidth)
