@@ -14,6 +14,10 @@ export default defineConfig({
       "/input": {
         target,
         changeOrigin: true
+      },
+      "/voice": {
+        target,
+        changeOrigin: true
       }
     }
   }

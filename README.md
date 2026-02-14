@@ -45,7 +45,8 @@ such as `OPENAI_API_KEY`.
    - `npm install`
    - `npm run dev`
    - Open the URL shown by Vite (default `http://localhost:5173/`)
-   - This proxies `/input` and `/audio/stream` to `HOME_AI_WEB_PORT` (default `8080`).
+   - This proxies `/input`, `/voice`, and `/audio/stream` to
+     `HOME_AI_WEB_PORT` (default `8080`).
 
 ### One-command dev startup
 

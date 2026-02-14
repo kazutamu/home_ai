@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 const DEFAULT_SAMPLE_RATE = 16000;
+const MIC_TARGET_RATE = 16000;
 
 function resampleLinear(input, inRate, outRate) {
   if (inRate === outRate) {
@@ -17,6 +18,56 @@ function resampleLinear(input, inRate, outRate) {
     output[i] = input[i0] + (input[i1] - input[i0]) * frac;
   }
   return output;
+}
+
+function mergeFloat32(chunks) {
+  const total = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const merged = new Float32Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function encodeWavPcm16(samples, sampleRate) {
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeAscii = (offset, text) => {
+    for (let i = 0; i < text.length; i++) {
+      view.setUint8(offset + i, text.charCodeAt(i));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    const value = s < 0 ? s * 0x8000 : s * 0x7fff;
+    view.setInt16(offset, value, true);
+    offset += 2;
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 function useAudioStream() {
@@ -162,19 +213,125 @@ function useAudioStream() {
   };
 }
 
+function useMicRecorder() {
+  const [status, setStatus] = useState("idle");
+  const levelRef = useRef(0);
+  const chunksRef = useRef([]);
+  const audioCtxRef = useRef(null);
+  const streamRef = useRef(null);
+  const sourceRef = useRef(null);
+  const processorRef = useRef(null);
+
+  const startRecording = async () => {
+    if (status !== "idle") {
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+
+    chunksRef.current = [];
+    streamRef.current = stream;
+    audioCtxRef.current = audioCtx;
+
+    const source = audioCtx.createMediaStreamSource(stream);
+    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+    processor.onaudioprocess = (event) => {
+      const channel = event.inputBuffer.getChannelData(0);
+      chunksRef.current.push(new Float32Array(channel));
+
+      let sum = 0;
+      for (let i = 0; i < channel.length; i++) {
+        const v = channel[i];
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / Math.max(1, channel.length));
+      const scaled = Math.min(1, rms * 8);
+      levelRef.current = levelRef.current * 0.82 + scaled * 0.18;
+    };
+
+    source.connect(processor);
+    processor.connect(audioCtx.destination);
+    sourceRef.current = source;
+    processorRef.current = processor;
+    setStatus("recording");
+  };
+
+  const stopRecording = async () => {
+    if (status !== "recording") {
+      return null;
+    }
+    setStatus("processing");
+
+    sourceRef.current?.disconnect();
+    processorRef.current?.disconnect();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+
+    const audioCtx = audioCtxRef.current;
+    const inputRate = audioCtx?.sampleRate || MIC_TARGET_RATE;
+    if (audioCtx) {
+      await audioCtx.close();
+    }
+
+    sourceRef.current = null;
+    processorRef.current = null;
+    streamRef.current = null;
+    audioCtxRef.current = null;
+
+    const merged = mergeFloat32(chunksRef.current);
+    chunksRef.current = [];
+
+    if (!merged.length) {
+      setStatus("idle");
+      return null;
+    }
+
+    const resampled = resampleLinear(merged, inputRate, MIC_TARGET_RATE);
+    const blob = encodeWavPcm16(resampled, MIC_TARGET_RATE);
+
+    setStatus("idle");
+    levelRef.current = 0;
+    return blob;
+  };
+
+  useEffect(() => () => {
+    sourceRef.current?.disconnect();
+    processorRef.current?.disconnect();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    audioCtxRef.current?.close();
+  }, []);
+
+  return {
+    status,
+    levelRef,
+    startRecording,
+    stopRecording
+  };
+}
+
 export default function App() {
   const [text, setText] = useState("");
   const [log, setLog] = useState([]);
   const [sending, setSending] = useState(false);
-  const [level, setLevel] = useState(0);
+  const [speakerLevel, setSpeakerLevel] = useState(0);
+  const [micLevel, setMicLevel] = useState(0);
+
   const { status, sampleRate, levelRef, start, stop } = useAudioStream();
+  const {
+    status: micStatus,
+    levelRef: micLevelRef,
+    startRecording,
+    stopRecording
+  } = useMicRecorder();
 
   useEffect(() => {
     const id = setInterval(() => {
-      setLevel(levelRef.current);
+      setSpeakerLevel(levelRef.current);
+      setMicLevel(micLevelRef.current);
     }, 80);
     return () => clearInterval(id);
-  }, [levelRef]);
+  }, [levelRef, micLevelRef]);
 
   const addLog = (message) => {
     const ts = new Date().toLocaleTimeString();
@@ -206,12 +363,54 @@ export default function App() {
     }
   };
 
+  const onMicButton = async () => {
+    try {
+      if (micStatus === "idle") {
+        await startRecording();
+        addLog("Voice capture started");
+        return;
+      }
+      if (micStatus !== "recording") {
+        return;
+      }
+
+      const blob = await stopRecording();
+      if (!blob) {
+        addLog("No voice detected");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("audio", blob, "voice.wav");
+
+      const resp = await fetch("/voice/transcribe", {
+        method: "POST",
+        body: formData
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || "Transcription failed");
+      }
+
+      const transcript = (data.text || "").trim();
+      if (!transcript) {
+        addLog("No speech recognized");
+        return;
+      }
+
+      setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      addLog(`Voice transcript: ${transcript}`);
+    } catch (err) {
+      addLog(`Voice input failed: ${err.message || err}`);
+    }
+  };
+
   return (
     <div className="page">
       <div className="card">
         <header>
           <h1>Home AI</h1>
-          <p>Real-time audio stream with a minimal React client.</p>
+          <p>Type or record your voice, then send a message and listen to streamed replies.</p>
         </header>
 
         <div className="row">
@@ -231,6 +430,17 @@ export default function App() {
 
         <div className="row">
           <button
+            className={micStatus === "recording" ? "danger" : "secondary"}
+            onClick={onMicButton}
+            disabled={micStatus === "processing"}
+          >
+            {micStatus === "recording" ? "Stop Voice" : micStatus === "processing" ? "Processing..." : "Record Voice"}
+          </button>
+          <div className="status">Mic: {micStatus}</div>
+        </div>
+
+        <div className="row">
+          <button
             className="secondary"
             onClick={status === "streaming" ? stop : start}
           >
@@ -243,12 +453,23 @@ export default function App() {
         </div>
 
         <div className="meter">
-          <div className="meter-label">Level</div>
-          <div className="meter-value">{Math.round(level * 100)}%</div>
+          <div className="meter-label">Speaker</div>
+          <div className="meter-value">{Math.round(speakerLevel * 100)}%</div>
           <div className="meter-bar">
             <div
               className="meter-fill"
-              style={{ width: `${Math.min(1, level) * 100}%` }}
+              style={{ width: `${Math.min(1, speakerLevel) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="meter">
+          <div className="meter-label">Mic</div>
+          <div className="meter-value">{Math.round(micLevel * 100)}%</div>
+          <div className="meter-bar">
+            <div
+              className="meter-fill"
+              style={{ width: `${Math.min(1, micLevel) * 100}%` }}
             />
           </div>
         </div>
