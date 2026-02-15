@@ -20,13 +20,13 @@ dependencies = [
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
-    "webrtcvad>=2.0.10",
     "temporalio>=1.0.0",
     "sentence-transformers>=2.6.0",
     "hnswlib>=0.8.0",
     "aiohttp>=3.9.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.scripts]

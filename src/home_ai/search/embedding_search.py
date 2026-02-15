@@ -173,7 +173,12 @@ def search_local_docs(query: str, *, max_results: int = DEFAULT_MAX_RESULTS) -> 
     if not query:
         return []
 
-    embeddings, meta = _get_index_cache()
+    try:
+        embeddings, meta = _get_index_cache()
+    except RuntimeError as exc:
+        if str(exc) in {"No docs directory found to build the index.", "No documents to index."}:
+            return []
+        raise
     model = _get_model()
     embedding = model.encode([query], show_progress_bar=False)
     embedding = np.asarray(embedding, dtype=np.float32)

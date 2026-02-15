@@ -8,8 +8,8 @@ Minimal uv project for a voice agent that:
 - synthesizes speech with Coqui TTS, and
 - streams audio over HTTP and can play locally via ffplay.
 
-There are three entry points: `voice_input` (mic), `text_input` (CLI), and
-`audio_stream_client` (play HTTP audio stream locally).
+Primary interaction is via the web frontend. `audio_stream_client` is available
+for local HTTP audio stream playback.
 
 ## Prerequisites
 
@@ -35,22 +35,37 @@ such as `OPENAI_API_KEY`.
 1. Start a Temporal server (for local dev you can use `temporal server start-dev`).
 2. Start the backend (FastAPI + Temporal worker):
    `uv run python -m home_ai.web.server`
-3. Start input:
-   - Voice input: `uv run python -m home_ai.voice_input`
-   - Text input: `uv run python -m home_ai.text_input`
-4. (Optional) Play the HTTP audio stream locally:
+3. (Optional) Play the HTTP audio stream locally:
    `uv run python -m home_ai.audio_stream_client`
-5. (Optional) React dev client (Vite):
+4. (Optional) React dev client (Vite):
    - `cd web_client`
    - `npm install`
    - `npm run dev`
    - Open the URL shown by Vite (default `http://localhost:5173/`)
-   - This proxies `/input` and `/audio/stream` to `HOME_AI_WEB_PORT` (default `8080`).
+   - This proxies `/input`, `/voice`, and `/audio/stream` to
+     `HOME_AI_WEB_PORT` (default `8080`).
 
-Stopping:
+### One-command dev startup
 
-- In voice mode, say "quit", "exit", or "stop" to end the session.
-- In text mode, enter `q`.
+For local development, you can launch Temporal (if installed), backend, and the
+Vite client together:
+
+```bash
+./scripts/start-dev.sh
+```
+
+Notes:
+
+- If `temporal` CLI is not installed, the script assumes Temporal is already
+  running on `localhost:7233`.
+- If Temporal (`7233`) or backend (`HOME_AI_WEB_PORT`) is already running, the
+  script reuses it instead of starting a duplicate process.
+- If `HOME_AI_WEB_PORT` is occupied by a non-Home AI service, the script fails
+  fast with guidance instead of proceeding with a broken setup.
+- Frontend port can be overridden with `VITE_PORT` (default `5173`).
+- Backend port follows `HOME_AI_WEB_PORT` (default `8080`).
+- `VITE_API_TARGET` is auto-derived as `http://localhost:$HOME_AI_WEB_PORT`
+  unless you override it explicitly.
 
 On shutdown, the workflow writes a session summary to `docs/conversation_notes.md`
 and rebuilds a local embedding index in `data/` for retrieval-augmented responses.
