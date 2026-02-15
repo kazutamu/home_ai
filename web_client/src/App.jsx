@@ -7,6 +7,7 @@ const MIC_START_TRIGGER_FRAMES = 1;
 const MIC_END_TRIGGER_FRAMES = 4;
 const MIC_MIN_SEGMENT_SECONDS = 0.25;
 const MIC_PREROLL_CHUNKS = 2;
+const SPEAKER_RECENT_WINDOW_MS = 450;
 
 function resampleLinear(input, inRate, outRate) {
   if (inRate === outRate) {
@@ -98,7 +99,9 @@ function useAudioStream() {
   const readerRef = useRef(null);
   const pendingRef = useRef([]);
   const abortRef = useRef(null);
+  const activeRef = useRef(false);
   const levelRef = useRef(0);
+  const speakerLastActiveAtRef = useRef(0);
   const [status, setStatus] = useState("stopped");
   const [sampleRate, setSampleRate] = useState(DEFAULT_SAMPLE_RATE);
 
@@ -139,14 +142,16 @@ function useAudioStream() {
   };
 
   const start = async () => {
-    if (status === "streaming" || status === "connecting") {
+    if (activeRef.current || status === "streaming" || status === "connecting") {
       return;
     }
+    activeRef.current = true;
     setStatus("connecting");
     const audioCtx = setupAudio();
     try {
       await audioCtx.resume();
     } catch (err) {
+      activeRef.current = false;
       setStatus("stopped");
       throw err;
     }
@@ -154,21 +159,21 @@ function useAudioStream() {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
-    const resp = await fetch("/audio/stream", { signal: abortController.signal });
-    if (!resp.ok) {
-      setStatus("stopped");
-      throw new Error(`Stream error: ${resp.status}`);
-    }
-
-    const headerRate = resp.headers.get("X-Audio-Sample-Rate");
-    const inputRate = headerRate ? parseInt(headerRate, 10) : DEFAULT_SAMPLE_RATE;
-    setSampleRate(inputRate);
-    setStatus("streaming");
-
-    const reader = resp.body.getReader();
-    readerRef.current = reader;
-    let leftover = new Uint8Array(0);
     try {
+      const resp = await fetch("/audio/stream", { signal: abortController.signal });
+      if (!resp.ok) {
+        throw new Error(`Stream error: ${resp.status}`);
+      }
+
+      const headerRate = resp.headers.get("X-Audio-Sample-Rate");
+      const inputRate = headerRate ? parseInt(headerRate, 10) : DEFAULT_SAMPLE_RATE;
+      setSampleRate(inputRate);
+      setStatus("streaming");
+
+      const reader = resp.body.getReader();
+      readerRef.current = reader;
+      let leftover = new Uint8Array(0);
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
@@ -205,17 +210,37 @@ function useAudioStream() {
         const rms = Math.sqrt(sum / Math.max(1, floats.length));
         const scaled = Math.min(1, rms * 6);
         levelRef.current = levelRef.current * 0.85 + scaled * 0.15;
+        if (scaled > 0.04) {
+          speakerLastActiveAtRef.current = Date.now();
+        }
         const resampled = resampleLinear(floats, inputRate, audioCtx.sampleRate);
         enqueue(resampled);
       }
+    } catch (err) {
+      if (err?.name !== "AbortError") {
+        throw err;
+      }
     } finally {
+      if (readerRef.current) {
+        try {
+          await readerRef.current.cancel();
+        } catch (_) {}
+      }
+      readerRef.current = null;
+      abortRef.current = null;
+      activeRef.current = false;
       setStatus("stopped");
     }
   };
 
   const stop = async () => {
     abortRef.current?.abort();
+    try {
+      await readerRef.current?.cancel();
+    } catch (_) {}
+    readerRef.current = null;
     abortRef.current = null;
+    activeRef.current = false;
     setStatus("stopped");
     pendingRef.current = [];
   };
@@ -234,19 +259,21 @@ function useAudioStream() {
     status,
     sampleRate,
     levelRef,
+    speakerLastActiveAtRef,
     start,
     stop,
     clearPending
   };
 }
 
-function useMicRecorder(onSegmentReady) {
+function useMicRecorder(onSegmentReady, speakerLastActiveAtRef) {
   const [status, setStatus] = useState("idle");
   const levelRef = useRef(0);
   const audioCtxRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
   const processorRef = useRef(null);
+  const monitorGainRef = useRef(null);
   const speakingRef = useRef(false);
   const speechFramesRef = useRef(0);
   const silenceFramesRef = useRef(0);
@@ -280,7 +307,13 @@ function useMicRecorder(onSegmentReady) {
     if (status !== "idle") {
       return;
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     await audioCtx.resume();
 
@@ -294,6 +327,8 @@ function useMicRecorder(onSegmentReady) {
 
     const source = audioCtx.createMediaStreamSource(stream);
     const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+    const monitorGain = audioCtx.createGain();
+    monitorGain.gain.value = 0;
 
     processor.onaudioprocess = (event) => {
       const channel = event.inputBuffer.getChannelData(0);
@@ -308,7 +343,9 @@ function useMicRecorder(onSegmentReady) {
       levelRef.current = levelRef.current * 0.82 + scaled * 0.18;
 
       const chunk = new Float32Array(channel);
-      const isSpeech = rms >= MIC_RMS_THRESHOLD;
+      const speakerRecentlyActive =
+        Date.now() - (speakerLastActiveAtRef?.current || 0) < SPEAKER_RECENT_WINDOW_MS;
+      const isSpeech = !speakerRecentlyActive && rms >= MIC_RMS_THRESHOLD;
       const inputRate = audioCtx.sampleRate || MIC_TARGET_RATE;
 
       if (isSpeech) {
@@ -344,9 +381,11 @@ function useMicRecorder(onSegmentReady) {
     };
 
     source.connect(processor);
-    processor.connect(audioCtx.destination);
+    processor.connect(monitorGain);
+    monitorGain.connect(audioCtx.destination);
     sourceRef.current = source;
     processorRef.current = processor;
+    monitorGainRef.current = monitorGain;
     setStatus("listening");
   };
 
@@ -357,6 +396,7 @@ function useMicRecorder(onSegmentReady) {
 
     sourceRef.current?.disconnect();
     processorRef.current?.disconnect();
+    monitorGainRef.current?.disconnect();
     streamRef.current?.getTracks().forEach((track) => track.stop());
 
     const audioCtx = audioCtxRef.current;
@@ -367,6 +407,7 @@ function useMicRecorder(onSegmentReady) {
 
     sourceRef.current = null;
     processorRef.current = null;
+    monitorGainRef.current = null;
     streamRef.current = null;
     audioCtxRef.current = null;
     speakingRef.current = false;
@@ -381,6 +422,7 @@ function useMicRecorder(onSegmentReady) {
   useEffect(() => () => {
     sourceRef.current?.disconnect();
     processorRef.current?.disconnect();
+    monitorGainRef.current?.disconnect();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     audioCtxRef.current?.close();
   }, []);
@@ -399,9 +441,10 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [speakerLevel, setSpeakerLevel] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
+  const [booting, setBooting] = useState(true);
   const segmentQueueRef = useRef(Promise.resolve());
 
-  const { status, sampleRate, levelRef, start, stop, clearPending } = useAudioStream();
+  const { status, sampleRate, levelRef, speakerLastActiveAtRef, start, stop, clearPending } = useAudioStream();
   const processVoiceSegment = async (blob) => {
     const formData = new FormData();
     formData.append("audio", blob, "voice.wav");
@@ -442,7 +485,12 @@ export default function App() {
     levelRef: micLevelRef,
     startListening,
     stopListening
-  } = useMicRecorder(onVoiceSegmentReady);
+  } = useMicRecorder(onVoiceSegmentReady, speakerLastActiveAtRef);
+
+  const addLog = (message) => {
+    const ts = new Date().toLocaleTimeString();
+    setLog((prev) => [`[${ts}] ${message}`, ...prev].slice(0, 12));
+  };
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -452,10 +500,43 @@ export default function App() {
     return () => clearInterval(id);
   }, [levelRef, micLevelRef]);
 
-  const addLog = (message) => {
-    const ts = new Date().toLocaleTimeString();
-    setLog((prev) => [`[${ts}] ${message}`, ...prev].slice(0, 12));
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const startHandsFree = async () => {
+      try {
+        await startListening();
+        if (!cancelled) {
+          addLog("Mic listening enabled");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          addLog(`Mic unavailable: ${err.message || err}`);
+        }
+      }
+
+      try {
+        await start();
+        if (!cancelled) {
+          addLog("Speaker stream connected");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          addLog(`Speaker unavailable: ${err.message || err}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setBooting(false);
+        }
+      }
+    };
+
+    startHandsFree();
+    return () => {
+      cancelled = true;
+      void stopListening();
+      void stop();
+    };
+  }, []);
 
   const submitText = async (payload) => {
     if (!payload) {
@@ -488,26 +569,39 @@ export default function App() {
     if (!payload) {
       return;
     }
+    if (status !== "streaming") {
+      try {
+        await start();
+        addLog("Speaker stream connected");
+      } catch (err) {
+        addLog(`Speaker unavailable: ${err.message || err}`);
+      }
+    }
     const ok = await submitText(payload);
     if (ok) {
       setText("");
     }
   };
 
-  const onMicButton = async () => {
+  const enableVoice = async () => {
     try {
-      if (micStatus === "idle") {
-        await startListening();
-        addLog("Voice capture started (auto send enabled)");
-        return;
-      }
       if (micStatus !== "listening") {
-        return;
+        await startListening();
+        addLog("Mic listening enabled");
       }
-      await stopListening();
-      addLog("Voice capture stopped");
     } catch (err) {
-      addLog(`Voice input failed: ${err.message || err}`);
+      addLog(`Mic unavailable: ${err.message || err}`);
+    }
+  };
+
+  const enableAudio = async () => {
+    try {
+      if (status !== "streaming" && status !== "connecting") {
+        await start();
+        addLog("Speaker stream connected");
+      }
+    } catch (err) {
+      addLog(`Speaker unavailable: ${err.message || err}`);
     }
   };
 
@@ -516,8 +610,23 @@ export default function App() {
       <div className="card">
         <header>
           <h1>Home AI</h1>
-          <p>Type or record your voice, then send a message and listen to streamed replies.</p>
+          <p>Always-on voice and instant spoken replies.</p>
         </header>
+
+        <div className="status-grid">
+          <div className="status-pill">
+            <span className={`dot ${micStatus === "listening" ? "ok" : ""}`} />
+            Mic {micStatus}
+          </div>
+          <div className="status-pill">
+            <span className={`dot ${status === "streaming" ? "ok" : ""}`} />
+            Speaker {status === "streaming" ? `on (${sampleRate} Hz)` : status}
+          </div>
+          <div className="status-pill">
+            <span className={`dot ${booting ? "" : "ok"}`} />
+            {booting ? "Starting..." : "Ready"}
+          </div>
+        </div>
 
         <div className="row">
           <input
@@ -532,32 +641,15 @@ export default function App() {
             }}
           />
           <button onClick={sendText} disabled={sending}>Send</button>
+          {micStatus !== "listening" && !booting ? (
+            <button className="secondary" onClick={enableVoice}>Enable Voice</button>
+          ) : null}
+          {status !== "streaming" && !booting ? (
+            <button className="secondary" onClick={enableAudio}>Enable Audio</button>
+          ) : null}
         </div>
 
-        <div className="row">
-          <button
-            className={micStatus === "listening" ? "danger" : "secondary"}
-            onClick={onMicButton}
-          >
-            {micStatus === "listening" ? "Stop Voice" : "Record Voice"}
-          </button>
-          <div className="status">Mic: {micStatus}</div>
-        </div>
-
-        <div className="row">
-          <button
-            className="secondary"
-            onClick={status === "streaming" ? stop : start}
-          >
-            {status === "streaming" ? "Stop Audio" : "Start Audio"}
-          </button>
-          <div className="status">
-            Audio: {status}
-            {status === "streaming" ? ` (${sampleRate} Hz)` : ""}
-          </div>
-        </div>
-
-        <div className="meter">
+        <div className="meter compact">
           <div className="meter-label">Speaker</div>
           <div className="meter-value">{Math.round(speakerLevel * 100)}%</div>
           <div className="meter-bar">
@@ -568,7 +660,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="meter">
+        <div className="meter compact">
           <div className="meter-label">Mic</div>
           <div className="meter-value">{Math.round(micLevel * 100)}%</div>
           <div className="meter-bar">

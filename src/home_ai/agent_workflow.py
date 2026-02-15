@@ -1,7 +1,9 @@
+import contextlib
 from datetime import timedelta
 from typing import Awaitable, Callable, Optional
 
 from temporalio import common, workflow
+from temporalio.exceptions import ActivityError, CancelledError
 
 from home_ai.workflow_utils import (
     append_history,
@@ -54,6 +56,8 @@ class ChatAgentWorkflow:
             if on_cancel_result is not None and result is not None:
                 await on_cancel_result(result)
             handle.cancel()
+            with contextlib.suppress(ActivityError, CancelledError):
+                await handle
             return True, None
         result = await handle
         return self.generation > start_generation, result
